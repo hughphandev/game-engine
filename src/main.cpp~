@@ -1,0 +1,150 @@
+#include <windows.h>
+
+// TODO: Global for now
+static bool running;
+static BITMAPINFO bitmapInfo;
+static void *bitmapMemory;
+static HBITMAP bitmapHandle;
+static HDC bitmapDeviceContext; 
+
+static void
+Win32ResizeDIBSection(int width, int height)
+{
+  if(bitmapHandle)
+    {
+      DeleteObject(bitmapHandle);
+    }
+
+  if(!bitmapDeviceContext)
+    {
+      // TODO: Maybe recreate under certain circumstances
+      bitmapDeviceContext = CreateCompatibleDC(0);
+    }
+  
+  bitmapInfo.bmiHeader.biSize = sizeof(bitmapInfo.bmiHeader);
+  bitmapInfo.bmiHeader.biWidth = width;
+  bitmapInfo.bmiHeader.biHeight = height;
+  bitmapInfo.bmiHeader.biPlanes = 1;
+  bitmapInfo.bmiHeader.biBitCount = 32;
+  bitmapInfo.bmiHeader.biCompression = BI_RGB;
+
+  bitmapHandle = CreateDIBSection(bitmapDeviceContext, &bitmapInfo,
+					  DIB_RGB_COLORS, &bitmapMemory,
+					  0, 0);
+}
+
+static void
+Win32UpdateWindow(HDC deviceContext, int x, int y, int width, int height)
+{
+  StretchDIBits(deviceContext,
+		    x, y, width, height,
+		    x, y, width, height,
+		    bitmapMemory,
+		    &bitmapInfo,
+		    DIB_RGB_COLORS, SRCCOPY);
+}
+
+LRESULT CALLBACK MainWindowCallback(HWND window,
+				    UINT message,
+				    WPARAM wParam,
+				    LPARAM lParam)
+{
+  LRESULT result = 0;
+  
+  switch(message)
+    {
+    case WM_SIZE:
+      {
+	RECT clientRect;
+	GetClientRect(window, &clientRect);
+	int width = clientRect.right - clientRect.left;
+	int height = clientRect.bottom - clientRect.top;
+	Win32ResizeDIBSection(width, height);
+	OutputDebugStringA("WM_SIZE\n");
+      } break;
+    case WM_DESTROY:
+      {
+	running = false; // TODO: Handle as errro - recreate window?
+      } break;
+    case WM_ACTIVATEAPP:
+      {
+	OutputDebugStringA("WM_ACTIVATEAPP\n");
+      } break;
+    case WM_CLOSE:
+      {
+	running = false; // TODO: Handle as user close message
+      } break;
+    case WM_PAINT:
+      {
+	PAINTSTRUCT paint;
+	HDC deviceContext = BeginPaint(window, &paint);
+	int x = paint.rcPaint.left;
+	int y = paint.rcPaint.top;
+	int width = paint.rcPaint.right - paint.rcPaint.left;
+	int height = paint.rcPaint.bottom - paint.rcPaint.top;
+	Win32UpdateWindow(deviceContext, x, y, width, height);
+	PatBlt(deviceContext, x, y, width, height, WHITENESS);
+
+	EndPaint(window, &paint);
+      } break;
+    default:
+      {
+	OutputDebugStringA("DEFAULT\n");
+	result = DefWindowProc(window, message, wParam, lParam);
+      } break;
+    }
+  return result;
+}
+
+
+INT WinMain(HINSTANCE instance,
+	    HINSTANCE prevInstance,
+	    PSTR cmdLine,
+	    INT cmdShow)
+{
+  WNDCLASS windowClass = {};
+  windowClass.style= CS_OWNDC|CS_HREDRAW|CS_VREDRAW;
+  windowClass.lpfnWndProc = MainWindowCallback;
+  windowClass.hInstance = instance;
+  // windowClass.hIcon = ;
+  windowClass.lpszClassName = "MainClass";
+
+  if(RegisterClass(&windowClass))
+    {
+      HWND windowHandle = CreateWindowEx(0, windowClass.lpszClassName,
+					 "Main", WS_OVERLAPPEDWINDOW|
+					 WS_VISIBLE, CW_USEDEFAULT,
+					 CW_USEDEFAULT, CW_USEDEFAULT,
+					 CW_USEDEFAULT, 0,
+					 0, instance, 0);
+      if(windowHandle)
+	{
+	  running = true;
+	  while(running)
+	    {
+	      MSG message;
+	      BOOL msgResult = GetMessage(&message, NULL, 0, 0);
+	      if(msgResult > 0)
+		{
+		  TranslateMessage(&message);
+		  DispatchMessage(&message);
+		}
+	      else
+		{
+		  break;
+		}
+	    }
+	}
+      else
+	{
+	  // TODO: Logging
+	}
+    }
+  else
+    {
+      // TODO: Logging
+    }
+  
+  
+   return 0;
+}
