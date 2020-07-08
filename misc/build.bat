@@ -1,10 +1,7 @@
 @echo off
 
-mkdir ..\build
-pushd ..\build
+mkdir ..\..\build
+pushd ..\..\build
 call shell
-call cl -FC -Zi ..\src\main.cpp user32.lib gdi32.lib
-del *.ilk
-del *.obj
-del *.pdb
+call cl -FC -Zi ..\win32_engine\src\main.cpp user32.lib gdi32.lib 
 popd
