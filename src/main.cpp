@@ -326,6 +326,10 @@ INT WinMain(HINSTANCE instance,
        if(window)
 	{
 	  g_running = true;
+
+	  LARGE_INTEGER frequency;
+	  QueryPerformanceFrequency(&frequency);
+	  
 	  win32_sound_output soundOutput = {};
 	  soundOutput.runningSampleIndex = 0;
 	  soundOutput.bytesPerSample = sizeof(int16_t) * 2;
@@ -338,8 +342,19 @@ INT WinMain(HINSTANCE instance,
 	  Win32FillSoundBuffer(&soundOutput, 0, soundOutput.secondaryBufferSize);
 	  g_secondaryBuffer->Play(0, 0, DSBPLAY_LOOPING);
 	  
+	  LARGE_INTEGER time;
+	  QueryPerformanceCounter(&time);
 	  while(g_running)
 	    {
+	      LARGE_INTEGER currentTime;
+	      QueryPerformanceCounter(&currentTime);
+	      int32_t msElapsed = 1000 * (currentTime.QuadPart - time.QuadPart) / frequency.QuadPart;
+	      time = currentTime;
+
+	      char b[255];
+	      wsprintf(b, "%ims\n", msElapsed);
+	      OutputDebugStringA(b);
+	      
 	      MSG message;
 	      while(PeekMessage(&message, NULL, 0, 0, PM_REMOVE))
 		{
@@ -388,12 +403,8 @@ INT WinMain(HINSTANCE instance,
 								 &writeCursor)))
 		{
 		  DWORD bytesToLock = (soundOutput.runningSampleIndex * soundOutput.bytesPerSample) % soundOutput.secondaryBufferSize;
-		  DWORD bytesToWrite;
-		  if(playCursor == writeCursor)
-		    {
-		      writeCursor = 0;
-		    }
-		  else if(bytesToLock > playCursor)
+		  DWORD bytesToWrite = 0;
+		  if(bytesToLock > playCursor)
 		    {
 		      bytesToWrite = (soundOutput.secondaryBufferSize - bytesToLock);
 		      bytesToWrite += playCursor;
