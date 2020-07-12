@@ -305,6 +305,8 @@ INT WinMain(HINSTANCE instance,
 	    PSTR cmdLine,
 	    INT cmdShow)
 {
+  LARGE_INTEGER time;
+  QueryPerformanceCounter(&time);
   WNDCLASSA windowClass = {};
   windowClass.style = CS_HREDRAW|CS_VREDRAW;
   windowClass.lpfnWndProc = MainWindowCallback;
@@ -342,8 +344,6 @@ INT WinMain(HINSTANCE instance,
 	  Win32FillSoundBuffer(&soundOutput, 0, soundOutput.secondaryBufferSize);
 	  g_secondaryBuffer->Play(0, 0, DSBPLAY_LOOPING);
 	  
-	  LARGE_INTEGER time;
-	  QueryPerformanceCounter(&time);
 	  while(g_running)
 	    {
 	      LARGE_INTEGER currentTime;
