@@ -329,6 +329,7 @@ INT WinMain(HINSTANCE instance,
 {
 	LARGE_INTEGER time;
 	QueryPerformanceCounter(&time);
+	
 	WNDCLASSA windowClass = {};
 	windowClass.style = CS_HREDRAW | CS_VREDRAW;
 	windowClass.lpfnWndProc = MainWindowCallback;
