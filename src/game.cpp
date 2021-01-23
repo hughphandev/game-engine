@@ -1,42 +1,105 @@
 #include "game.h"
+#include <stdio.h>
 
-#define PI 3.14159
+#define PI 3.14159f
 
-void RenderGreenScreen(game_offscreen_buffer *buffer)
+void GameOutputSound(game_memory* gameMemory, game_sound_output* soundBuffer)
 {
-  uint8_t *row = (uint8_t *)buffer->memory;
+  static float tSine;
+  int volume = 10000;
+  int toneHZ = 256;
+  int wavePeriod = soundBuffer->samplesPerSecond / toneHZ;
+
+  int16_t* sampleOut = soundBuffer->samples;
+  for (int i = 0; i < soundBuffer->sampleCount; ++i)
+  {
+    float sineValue = sinf(tSine);
+    int16_t sampleValue = (int16_t)(sineValue * volume);
+    *sampleOut++ = sampleValue;
+    *sampleOut++ = sampleValue;
+
+    tSine += (float)(2.0 * PI * 1.0 / (float)wavePeriod);
+    if(tSine > 2.0 * PI)
+    {
+      tSine -= 2.0f * PI;
+    }
+  }
+}
+
+void RenderScreen(game_offscreen_buffer* buffer, uint32_t color)
+{
+  uint8_t* row = (uint8_t*)buffer->memory;
   for (int y = 0; y < buffer->height; ++y)
   {
-    uint32_t *pixel = (uint32_t *)row;
+    uint32_t* pixel = (uint32_t*)row;
     for (int x = 0; x < buffer->width; ++x)
     {
-      *pixel++ = (255 << 8);
+      *pixel++ = color;
     }
     row += buffer->pitch;
   }
 }
 
-void GameUpdateAndRender(game_offscreen_buffer *buffer, game_sound_output *soundBuffer)
+void RenderRectangle(game_offscreen_buffer* buffer, uint32_t color, int x, int y, int width, int height)
 {
-  RenderGreenScreen(buffer);
-  GameOutputSound(soundBuffer);
+  uint32_t* mem = (uint32_t*)buffer->memory;
+  for (int w = 0; w < width; w++)
+  {
+    for (int h = 0; h < height; h++)
+    {
+      int offsetX = w + x;
+      int offsetY = h + y;
+      if (offsetX >= 0 && offsetX < buffer->width &&
+          offsetY >= 0 && offsetY < buffer->height)
+      {
+        mem[offsetY * buffer->width + offsetX] = color;
+      }
+    }
+  }
 }
 
-void GameOutputSound(game_sound_output *soundBuffer)
+struct Rec
 {
-  static float tSine;
-  int volume = 1000;
-  int toneHZ = 256;
-  int wavePeriod = soundBuffer->samplesPerSecond / toneHZ;
-  
-  int16_t *sampleOut = soundBuffer->samples;
-  for (int i = 0; i < soundBuffer->sampleCount; ++i)
-  {
-    float sineValue = sinf(tSine);
-    int16_t sampleValue = sineValue * volume;
-    *sampleOut++ = sampleValue;
-    *sampleOut++ = sampleValue;
+  float x;
+  float y;
+  int width;
+  int height;
+};
+static Rec rec = {};
 
-    tSine += 2.0 * PI * 1.0 / (float)wavePeriod;
+void GameUpdateAndRender(game_memory* gameMemory, game_offscreen_buffer* buffer,
+                         game_input input)
+{
+  if (!gameMemory->initialized)
+  {
+    char* fileName = __FILE__;
+    debug_read_file_result file = DEBUGPlatformReadFile(fileName);
+    if (file.contents)
+    {
+      DEBUGPlatformWriteFile("w:/game_engine/game_engine/build/test.out", file.contentSize, file.contents);
+      DEBUGPlatformFreeMemory(file.contents);
+    }
+
+    gameMemory->initialized = true;
   }
+
+  rec.width = 100;
+  rec.height = 700;
+  if (input.keyCode == 'D' && input.isDown)
+  {
+    rec.x += 100.0f * input.elapsed;
+  }
+  if (input.keyCode == 'W' && input.isDown)
+  {
+    rec.y -= 100.0f * input.elapsed;
+  }
+  if (input.keyCode == 'S' && input.isDown)
+  {
+    rec.y += 100.0f * input.elapsed;
+  }
+  if (input.keyCode == 'A' && input.isDown)
+  {
+    rec.x -= 100.0f * input.elapsed;
+  }
+  RenderScreen(buffer, 0);
 }
