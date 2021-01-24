@@ -430,7 +430,6 @@ inline LARGE_INTEGER Win32GetWallClock()
 
 inline float Win32GetSecondsElapsed(LARGE_INTEGER before, LARGE_INTEGER after, LARGE_INTEGER frequency)
 {
-<<<<<<< HEAD
   return (float)(after.QuadPart - before.QuadPart) / frequency.QuadPart;
 }
 
@@ -465,39 +464,26 @@ void DebugAudioSync(game_offscreen_buffer* screen, win32_sound_output soundBuffe
     int playCursorPos = padX + (int)(c * marker.playCursors[i]);
     DebugDrawVerticalLine(screen, playCursorPos, top, top + cellHeight, playColor);
   }
-  DebugDrawVerticalLine(screen, padX + (int)(c * marker.writeCursor), top, top + cellHeight, writeColor);
+  DebugDrawVerticalLine(screen, padX + (int)(c * marker.writeCursor),
+                        top, top + cellHeight, writeColor);
 
   top += cellHeight;
   DebugDrawVerticalLine(screen, padX + (int)(c * marker.flipPlayCursor),
-                        padY, padY + cellHeight, playColor);
+                        top, top + cellHeight, playColor);
   DebugDrawVerticalLine(screen, padX + (int)(c * marker.flipWriteCursor),
-                        padY, padY + cellHeight, writeColor);
+                        top, top + cellHeight, writeColor);
   DebugDrawVerticalLine(screen, padX + (int)(c * marker.nextFrameBoundary),
-                        padY, padY + cellHeight, boundaryColor);
+                        top, top + cellHeight, boundaryColor);
 
   top += cellHeight;
   DebugDrawVerticalLine(screen, padX + (int)(c * marker.expectedWritePosition),
-                        padY, padY + cellHeight, expectedColor);
+                        top, top + cellHeight, expectedColor);
   DebugDrawVerticalLine(screen, padX + (int)(c * marker.expectedTargetCursor),
-                        padY, padY + cellHeight, expectedColor);
+                        top, top + cellHeight, expectedColor);
 }
 #endif
 
 #define MonitorRefreshHz 60
-=======
-	LARGE_INTEGER time;
-	QueryPerformanceCounter(&time);
-	
-	WNDCLASSA windowClass = {};
-	windowClass.style = CS_HREDRAW | CS_VREDRAW;
-	windowClass.lpfnWndProc = MainWindowCallback;
-	windowClass.hInstance = instance;
-	// windowClass.hIcon = ;
-	windowClass.lpszClassName = "MainClass";
-
-#define FramesOfAudioLatency 1
-#define MonitorRefreshHz 30
->>>>>>> 8ab1849 (setup vscode and remove build.bat)
 #define GameUpdateHz (MonitorRefreshHz / 2)
 INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
                       INT cmdShow)
