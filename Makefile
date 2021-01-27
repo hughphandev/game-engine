@@ -11,9 +11,9 @@ OBJDIR := $(BUILDDIR)/obj/
 32bit: 
 	$(CC) $(CFLAGS) /Fo:$(OBJDIR) /Fd:$(OBJDIR) $(SOURCEDIR)/game.cpp /link $(32BITFLAGS) /EXPORT:GameUpdateAndRender /EXPORT:GameOutputSound /DLL /OUT:$(BUILDDIR)game.dll 
 
-	$(CC) $(CFLAGS) /Fo:$(OBJDIR) /Fd:$(OBJDIR) $(SOURCEDIR)/win32_platform.cpp /link $(32BITFLAGS) $(LFLAGS) /OUT:$(BUILDDIR)/game.exe
+	$(CC) $(CFLAGS) /Fo:$(OBJDIR) /Fd:$(OBJDIR) $(SOURCEDIR)/win32_platform.cpp /link $(32BITFLAGS) $(LFLAGS) /OUT:$(BUILDDIR)game.exe
 
 64bit: 
 	$(CC) $(CFLAGS) /Fo:$(OBJDIR) /Fd:$(OBJDIR) $(SOURCEDIR)/game.cpp /link /EXPORT:GameUpdateAndRender /EXPORT:GameOutputSound /DLL /OUT:$(BUILDDIR)game.dll 
 
-	$(CC) $(CFLAGS) /Fo:$(OBJDIR) /Fd:$(OBJDIR) $(SOURCEDIR)/win32_platform.cpp /link $(LFLAGS) /OUT:$(BUILDDIR)/game.exe
+	$(CC) $(CFLAGS) /Fo:$(OBJDIR) /Fd:$(OBJDIR) $(SOURCEDIR)/win32_platform.cpp /link $(LFLAGS) /OUT:$(BUILDDIR)game.exe
