@@ -1,9 +1,50 @@
 #include "game.h"
 #include <stdio.h>
 
+void RenderScreen(game_offscreen_buffer* buffer, uint32_t color);
+
 #define PI 3.14159f
 
-void GameOutputSound(game_memory* gameMemory, game_sound_output* soundBuffer)
+static Rec rec = {};
+
+extern "C" void GameUpdateAndRender(game_memory* gameMemory, game_offscreen_buffer* buffer,
+                         game_input input)
+{
+  if (!gameMemory->initialized)
+  {
+    char* fileName = __FILE__;
+    debug_read_file_result file = gameMemory->DEBUGPlatformReadFile(fileName);
+    if (file.contents)
+    {
+      gameMemory->DEBUGPlatformWriteFile("w:/game_engine/game_engine/build/test.out", file.contentSize, file.contents);
+      gameMemory->DEBUGPlatformFreeMemory(file.contents);
+    }
+
+    gameMemory->initialized = true;
+  }
+
+  rec.width = 100;
+  rec.height = 700;
+  if (input.keyCode == 'D' && input.isDown)
+  {
+    rec.x += 100.0f * input.elapsed;
+  }
+  if (input.keyCode == 'W' && input.isDown)
+  {
+    rec.y -= 100.0f * input.elapsed;
+  }
+  if (input.keyCode == 'S' && input.isDown)
+  {
+    rec.y += 100.0f * input.elapsed;
+  }
+  if (input.keyCode == 'A' && input.isDown)
+  {
+    rec.x -= 100.0f * input.elapsed;
+  }
+  RenderScreen(buffer, 0);
+}
+
+extern "C" void GameOutputSound(game_memory* gameMemory, game_sound_output* soundBuffer)
 {
   static float tSine;
   int volume = 10000;
@@ -56,50 +97,4 @@ void RenderRectangle(game_offscreen_buffer* buffer, uint32_t color, int x, int y
       }
     }
   }
-}
-
-struct Rec
-{
-  float x;
-  float y;
-  int width;
-  int height;
-};
-static Rec rec = {};
-
-void GameUpdateAndRender(game_memory* gameMemory, game_offscreen_buffer* buffer,
-                         game_input input)
-{
-  if (!gameMemory->initialized)
-  {
-    char* fileName = __FILE__;
-    debug_read_file_result file = DEBUGPlatformReadFile(fileName);
-    if (file.contents)
-    {
-      DEBUGPlatformWriteFile("w:/game_engine/game_engine/build/test.out", file.contentSize, file.contents);
-      DEBUGPlatformFreeMemory(file.contents);
-    }
-
-    gameMemory->initialized = true;
-  }
-
-  rec.width = 100;
-  rec.height = 700;
-  if (input.keyCode == 'D' && input.isDown)
-  {
-    rec.x += 100.0f * input.elapsed;
-  }
-  if (input.keyCode == 'W' && input.isDown)
-  {
-    rec.y -= 100.0f * input.elapsed;
-  }
-  if (input.keyCode == 'S' && input.isDown)
-  {
-    rec.y += 100.0f * input.elapsed;
-  }
-  if (input.keyCode == 'A' && input.isDown)
-  {
-    rec.x -= 100.0f * input.elapsed;
-  }
-  RenderScreen(buffer, 0);
 }

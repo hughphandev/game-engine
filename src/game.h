@@ -1,6 +1,8 @@
 #ifndef GAME_H
 #define GAME_H
 
+#include <stdint.h>
+#include <math.h>
 
 #if INTERNAL
 struct debug_read_file_result
@@ -8,10 +10,9 @@ struct debug_read_file_result
   void* contents;
   uint32_t contentSize;
 };
-static debug_read_file_result DEBUGPlatformReadFile(char* fileName);
-static void DEBUGPlatformFreeMemory(void* memory);
-
-static bool DEBUGPlatformWriteFile(char* fileName, uint32_t memorySize, void* memory);
+debug_read_file_result DEBUGPlatformReadFile(char* fileName);
+void DEBUGPlatformFreeMemory(void* memory);
+bool DEBUGPlatformWriteFile(char* fileName, uint32_t memorySize, void* memory);
 #endif
 
 
@@ -62,10 +63,29 @@ struct game_memory
 
   uint64_t transientStorageSize;
   void* transientStorage; // TODO: REQUIRE clear to zero on startup
+
+bool (*DEBUGPlatformWriteFile)(char* fileName, uint32_t memorySize, void* memory);
+void (*DEBUGPlatformFreeMemory)(void* memory);
+debug_read_file_result (*DEBUGPlatformReadFile)(char* fileName);
 };
 
-void GameUpdateAndRender(game_memory* gameMemory, game_offscreen_buffer* buffer,
-                         game_input input);
-void GameOutputSound(game_memory* gameMemory, game_sound_output* soundBuffer);
+struct Rec
+{
+  float x;
+  float y;
+  int width;
+  int height;
+};
+
+#define GAME_UPDATE_AND_RENDER(name) void name(game_memory* gameMemory, game_offscreen_buffer* buffer, game_input input)
+typedef GAME_UPDATE_AND_RENDER(game_update_and_render);
+GAME_UPDATE_AND_RENDER(GameUpdateAndRenderStub) {}
+
+#define GAME_OUTPUT_SOUND(name) void name(game_memory* gameMemory, game_sound_output* soundBuffer)
+typedef GAME_OUTPUT_SOUND(game_output_sound);
+GAME_OUTPUT_SOUND(GameOutputSoundStub) {}
+
+extern "C" void GameUpdateAndRender(game_memory* gameMemory, game_offscreen_buffer* buffer, game_input input);
+extern "C" void GameOutputSound(game_memory* gameMemory, game_sound_output* soundBuffer);
 
 #endif

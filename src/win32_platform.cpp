@@ -1,15 +1,16 @@
 
+#include "game.h"
+
 #include <windows.h>
 #include <xinput.h>
 #include <dsound.h>
+#include <stdio.h>
+
 
 #include <math.h>
 #include <stdint.h>
 
 #include "win32_platform.h"
-
-#include "game.cpp"
-#include "game.h"
 
 // TODO: Global for now
 static bool g_running;
@@ -23,6 +24,38 @@ inline uint32_t SafeTruncateUInt64(uint64_t value)
   ASSERT(value < 0xFFFFFFFF);
   return (uint32_t)value;
 }
+
+struct win32_game_code
+{
+  HMODULE gameDll;
+  game_update_and_render* UpdateAndRender;
+  game_output_sound* OutputSound;
+
+  bool isValid;
+};
+static win32_game_code Win32LoadGameCode()
+{
+  win32_game_code gameCode = {};
+
+  gameCode.gameDll = LoadLibraryA("game.dll");
+  if (gameCode.gameDll)
+  {
+    gameCode.UpdateAndRender =
+      (game_update_and_render*)GetProcAddress(gameCode.gameDll, "GameUpdateAndRender");
+    gameCode.OutputSound =
+      (game_output_sound*)GetProcAddress(gameCode.gameDll, "GameOutputSound");
+
+    gameCode.isValid = (gameCode.UpdateAndRender && gameCode.OutputSound);
+  }
+
+  if (!gameCode.isValid)
+  {
+    gameCode.UpdateAndRender = GameUpdateAndRenderStub;
+    gameCode.OutputSound = GameOutputSoundStub;
+  }
+  return gameCode;
+}
+
 static void Win32LoadXInput()
 {
   HMODULE xInputLibrary = LoadLibraryA("xinput1_4.dll");
@@ -39,12 +72,12 @@ static void Win32LoadXInput()
   }
 }
 
-static void DEBUGPlatformFreeMemory(void* memory)
+void DEBUGPlatformFreeMemory(void* memory)
 {
   VirtualFree(memory, 0, MEM_RELEASE);
 }
 
-static debug_read_file_result DEBUGPlatformReadFile(char* fileName)
+debug_read_file_result DEBUGPlatformReadFile(char* fileName)
 {
   debug_read_file_result result = {};
   HANDLE fileHandle = CreateFileA(fileName, GENERIC_READ, FILE_SHARE_READ, 0,
@@ -89,7 +122,7 @@ static debug_read_file_result DEBUGPlatformReadFile(char* fileName)
   return result;
 }
 
-static bool DEBUGPlatformWriteFile(char* fileName, uint32_t memorySize, void* memory)
+bool DEBUGPlatformWriteFile(char* fileName, uint32_t memorySize, void* memory)
 {
   bool result = false;
   HANDLE fileHandle = CreateFileA(fileName, GENERIC_WRITE, 0, 0,
@@ -536,6 +569,9 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
       game_memory gameMemory = {};
       gameMemory.permanentStorageSize = MEGABYTES(64);
       gameMemory.transientStorageSize = GIGABYTES(1);
+      gameMemory.DEBUGPlatformFreeMemory = DEBUGPlatformFreeMemory;
+      gameMemory.DEBUGPlatformReadFile = DEBUGPlatformReadFile;
+      gameMemory.DEBUGPlatformWriteFile = DEBUGPlatformWriteFile;
 
       uint64_t totalSize = gameMemory.permanentStorageSize + gameMemory.transientStorageSize;
 
@@ -552,6 +588,8 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
 
         LARGE_INTEGER frequency = {};
         QueryPerformanceFrequency(&frequency);
+
+        win32_game_code game = Win32LoadGameCode();
 
 
 #if INTERNAL
@@ -577,7 +615,7 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
             buffer.height = g_backBuffer.height;
             buffer.pitch = g_backBuffer.pitch;
 
-            GameUpdateAndRender(&gameMemory, &buffer, input);
+            game.UpdateAndRender(&gameMemory, &buffer, input);
 
             // TODO: Not Tested yet. Properly buggy!
             DWORD writeCursor;
@@ -643,7 +681,7 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
               soundBuffer.sampleCount = bytesWrite / soundOutput.bytesPerSample;
               soundBuffer.samples = samples;
 
-              GameOutputSound(&gameMemory, &soundBuffer);
+              game.OutputSound(&gameMemory, &soundBuffer);
 
               Win32FillSoundBuffer(&soundOutput, writePosition,
                                    bytesWrite, &soundBuffer);
