@@ -54,6 +54,23 @@ struct game_input
   float elapsed;
 }; // TODO: Clean up
 
+struct Rec
+{
+  float x;
+  float y;
+  int width;
+  int height;
+};
+
+struct game_state
+{
+  float tSine;
+  int volume;
+  int toneHZ;
+
+  Rec player;
+};
+
 struct game_memory
 {
   bool initialized;
@@ -69,13 +86,6 @@ void (*DEBUGPlatformFreeMemory)(void* memory);
 debug_read_file_result (*DEBUGPlatformReadFile)(char* fileName);
 };
 
-struct Rec
-{
-  float x;
-  float y;
-  int width;
-  int height;
-};
 
 #define GAME_UPDATE_AND_RENDER(name) void name(game_memory* gameMemory, game_offscreen_buffer* buffer, game_input input)
 typedef GAME_UPDATE_AND_RENDER(game_update_and_render);

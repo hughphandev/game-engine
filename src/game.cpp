@@ -2,13 +2,12 @@
 #include <stdio.h>
 
 void RenderScreen(game_offscreen_buffer* buffer, uint32_t color);
+void RenderRectangle(game_offscreen_buffer* buffer, uint32_t color, int x, int y, int width, int height);
 
 #define PI 3.14159f
 
-static Rec rec = {};
-
-extern "C" void GameUpdateAndRender(game_memory* gameMemory, game_offscreen_buffer* buffer,
-                         game_input input)
+extern "C" void GameUpdateAndRender(game_memory * gameMemory, game_offscreen_buffer * buffer,
+                                    game_input input)
 {
   if (!gameMemory->initialized)
   {
@@ -23,46 +22,50 @@ extern "C" void GameUpdateAndRender(game_memory* gameMemory, game_offscreen_buff
     gameMemory->initialized = true;
   }
 
-  rec.width = 100;
-  rec.height = 700;
+  game_state* gameState = (game_state*)gameMemory->permanentStorage;
+  Rec* player = &gameState->player;
+  player->width = 10;
+  player->height = 10;
   if (input.keyCode == 'D' && input.isDown)
   {
-    rec.x += 100.0f * input.elapsed;
+    player->x += 200.0f * input.elapsed;
   }
   if (input.keyCode == 'W' && input.isDown)
   {
-    rec.y -= 100.0f * input.elapsed;
+    player->y -= 200.0f * input.elapsed;
   }
   if (input.keyCode == 'S' && input.isDown)
   {
-    rec.y += 100.0f * input.elapsed;
+    player->y += 200.0f * input.elapsed;
   }
   if (input.keyCode == 'A' && input.isDown)
   {
-    rec.x -= 100.0f * input.elapsed;
+    player->x -= 200.0f * input.elapsed;
   }
   RenderScreen(buffer, 0);
+  RenderRectangle(buffer, 0xFFFFFFF, (int)player->x, (int)player->y, (int)player->width, (int)player->height);
 }
 
-extern "C" void GameOutputSound(game_memory* gameMemory, game_sound_output* soundBuffer)
+extern "C" void GameOutputSound(game_memory * gameMemory, game_sound_output * soundBuffer)
 {
-  static float tSine;
-  int volume = 10000;
-  int toneHZ = 256;
-  int wavePeriod = soundBuffer->samplesPerSecond / toneHZ;
+  game_state* gameState = (game_state*)gameMemory->permanentStorage;
+  gameState->volume = 10000;
+  gameState->toneHZ = 256;
+
+  int wavePeriod = soundBuffer->samplesPerSecond / gameState->toneHZ;
 
   int16_t* sampleOut = soundBuffer->samples;
   for (int i = 0; i < soundBuffer->sampleCount; ++i)
   {
-    float sineValue = sinf(tSine);
-    int16_t sampleValue = (int16_t)(sineValue * volume);
+    float sineValue = sinf(gameState->tSine);
+    int16_t sampleValue = (int16_t)(sineValue * gameState->volume);
     *sampleOut++ = sampleValue;
     *sampleOut++ = sampleValue;
 
-    tSine += (float)(2.0 * PI * 1.0 / (float)wavePeriod);
-    if(tSine > 2.0 * PI)
+    gameState->tSine += (float)(2.0 * PI * 1.0 / (float)wavePeriod);
+    if (gameState->tSine > 2.0 * PI)
     {
-      tSine -= 2.0f * PI;
+      gameState->tSine -= 2.0f * PI;
     }
   }
 }

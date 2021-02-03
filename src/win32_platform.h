@@ -49,6 +49,16 @@ struct win32_sound_output
 	DWORD safetyBytes;
 };
 
+struct win32_game_code
+{
+	HMODULE gameDll;
+	game_update_and_render* UpdateAndRender;
+	game_output_sound* OutputSound;
+	FILETIME lastWriteTime;
+
+	bool isValid;
+};
+
 #if INTERNAL
 struct debug_audio_marker
 {
@@ -62,6 +72,22 @@ struct debug_audio_marker
 
 	DWORD expectedWritePosition;
 	DWORD expectedTargetCursor;
+};
+
+struct win32_state
+{
+	char *fileFullPath;
+	size_t recordIndex;
+	HANDLE playHandle;
+
+	size_t playIndex;
+	HANDLE recordHandle;
+
+	void* gameMemory;
+	DWORD memorySize;
+
+	bool isRecording;
+	bool isPlaying;
 };
 #endif
 
