@@ -1,52 +1,228 @@
 #include "game.h"
-#include <stdio.h>
 
 void RenderScreen(game_offscreen_buffer* buffer, uint32_t color);
-void RenderRectangle(game_offscreen_buffer* buffer, uint32_t color, int x, int y, int width, int height);
+void DrawRectangle(game_offscreen_buffer* buffer, uint32_t color, rec r);
 
 #define PI 3.14159f
 
-extern "C" void GameUpdateAndRender(game_memory * gameMemory, game_offscreen_buffer * buffer,
-                                    game_input input)
+bool IsBoxOverlapping(rec a, rec b)
+{
+  bool result = false;
+
+  result = (a.pos.x < b.pos.x + b.size.x) && (a.pos.x + a.size.x > b.pos.x) && (a.pos.y + a.size.y > b.pos.y) && (a.pos.y < b.pos.y + b.size.y);
+
+  return result;
+}
+
+float Abs(float value)
+{
+  return (value > 0) ? value : -value;
+}
+
+float Min(float a, float b)
+{
+  return a < b ? a : b;
+}
+
+static int RoundToInt(float value)
+{
+  return (int)(value + 0.5f);
+}
+
+float Max(float a, float b)
+{
+  return a > b ? a : b;
+}
+
+vector2 operator+(vector2 l, vector2 r)
+{
+  vector2 result = {};
+  result.x = l.x + r.x;
+  result.y = l.y + r.y;
+  return result;
+}
+
+vector2 operator-(vector2 l, vector2 r)
+{
+  vector2 result = {};
+  result.x = l.x - r.x;
+  result.y = l.y - r.y;
+  return result;
+}
+
+vector2 operator/(vector2 l, vector2 r)
+{
+  vector2 result = {};
+  result.x = l.x / r.x;
+  result.y = l.y / r.y;
+  return result;
+}
+
+vector2 operator/(vector2 l, float r)
+{
+  vector2 result = {};
+  result.x = l.x / r;
+  result.y = l.y / r;
+  return result;
+}
+
+vector2 operator*(vector2 l, float r)
+{
+  vector2 result = {};
+  result.x = l.x * r;
+  result.y = l.y * r;
+  return result;
+}
+
+vector2 operator*(vector2 l, vector2 r)
+{
+  vector2 result = {};
+  result.x = l.x * r.x;
+  result.y = l.y * r.y;
+  return result;
+}
+
+void Swap(float* l, float* r)
+{
+  float temp = *l;
+  *l = *r;
+  *r = temp;
+}
+
+bool RayToRec(vector2 rayOrigin, vector2 rayDir, rec r, vector2* contactPoint, vector2* contactNormal)
+{
+  vector2 minPos = r.pos - (r.size / 2.0f);
+  vector2 maxPos = r.pos + (r.size / 2.0f);
+
+  vector2 tNear = (minPos - rayOrigin) / rayDir;
+  vector2 tFar = (maxPos - rayOrigin) / rayDir;
+
+  if (tNear.x > tFar.x) Swap(&tNear.x, &tFar.x);
+  if (tNear.y > tFar.y) Swap(&tNear.y, &tFar.y);
+
+  if (tNear.x > tFar.y || tNear.y > tFar.x) return false;
+
+  float tHitNear = Max(tNear.x, tNear.y);
+  float tHitFar = Min(tFar.x, tFar.y);
+
+  if (tHitFar < 0.0f) return false;
+  if (tHitNear > 1.0f) return false;
+
+  //TODO: right and bottom edge collision
+  contactPoint->x = rayOrigin.x + tHitNear * rayDir.x;
+  contactPoint->y = rayOrigin.y + tHitNear * rayDir.y;
+
+  if (tNear.x > tNear.y)
+  {
+    if (rayDir.x > 0.0)
+    {
+      *contactNormal = { -1.0f, 0.0f };
+    }
+    else
+    {
+      *contactNormal = { 1.0f, 0.0f };
+    }
+  }
+  else
+  {
+    if (rayDir.y < 0.0f)
+    {
+      *contactNormal = { 0.0f, 1.0f };
+    }
+    else
+    {
+      *contactNormal = { 0.0f, -1.0f };
+    }
+  }
+
+  return true;
+}
+
+void DrawLine(game_offscreen_buffer* buffer, vector2 from, vector2 to, uint32_t lineColor)
+{
+  //TODO: Handle out of screen bound
+  uint32_t* pixel = (uint32_t*)buffer->memory;
+  if (from.x == to.x)
+  {
+    int startY = RoundToInt(Min(from.y, to.y));
+    int endY = RoundToInt(Max(from.y, to.y));
+    int x = RoundToInt(from.x);
+    for (int i = startY; i < endY; ++i)
+    {
+      pixel[i * buffer->width + x] = lineColor;
+    }
+  }
+  else
+  {
+    float a = (to.y - from.y) / (to.x - from.x);
+    float b = from.y - (a * from.x);
+    int startX = RoundToInt(Min(from.x, to.x));
+    int endX = RoundToInt(Max(from.x, to.x));
+    for (int i = startX; i < endX; ++i)
+    {
+      int y = RoundToInt(a * (float)i + b);
+      if (i >= 0 && i < buffer->width && y >= 0 && y < buffer->height)
+      {
+        pixel[y * buffer->width + i] = lineColor;
+      }
+    }
+  }
+
+}
+
+extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 {
   if (!gameMemory->initialized)
   {
-    char* fileName = __FILE__;
-    debug_read_file_result file = gameMemory->DEBUGPlatformReadFile(fileName);
-    if (file.contents)
-    {
-      gameMemory->DEBUGPlatformWriteFile("w:/game_engine/game_engine/build/test.out", file.contentSize, file.contents);
-      gameMemory->DEBUGPlatformFreeMemory(file.contents);
-    }
-
     gameMemory->initialized = true;
   }
 
   game_state* gameState = (game_state*)gameMemory->permanentStorage;
-  Rec* player = &gameState->player;
-  player->width = 10;
-  player->height = 10;
-  if (input.keyCode == 'D' && input.isDown)
+
+  rec* player = &gameState->player;
+  player->size.x = 10;
+  player->size.y = 10;
+
+  vector2 velocity = { };
+  if (input.right.isDown)
   {
-    player->x += 200.0f * input.elapsed;
+    velocity.x = 200.0f;
   }
-  if (input.keyCode == 'W' && input.isDown)
+  if (input.up.isDown)
   {
-    player->y -= 200.0f * input.elapsed;
+    velocity.y = -200.0f;
   }
-  if (input.keyCode == 'S' && input.isDown)
+  if (input.down.isDown)
   {
-    player->y += 200.0f * input.elapsed;
+    velocity.y = 200.0f;
   }
-  if (input.keyCode == 'A' && input.isDown)
+  if (input.left.isDown)
   {
-    player->x -= 200.0f * input.elapsed;
+    velocity.x = -200.0f;
   }
+
+  rec r = { 200, 100, 100, 100 };
+  uint32_t recColor = 0x00FFFF;
+
   RenderScreen(buffer, 0);
-  RenderRectangle(buffer, 0xFFFFFFF, (int)player->x, (int)player->y, (int)player->width, (int)player->height);
+  vector2 contactNormal = {};
+  vector2 contactPoint = {};
+  vector2 mousePos = { (float)input.mouseX, (float)input.mouseY };
+  if (RayToRec(player->pos, velocity * input.timeStep, r, &contactPoint, &contactNormal))
+  {
+    recColor = 0xFF0000;
+    player->pos = contactPoint + (contactNormal * (player->size / 2.0f));
+  }
+  else
+  {
+    player->pos = player->pos + velocity * input.timeStep;
+  }
+
+  DrawRectangle(buffer, recColor, r);
+  DrawRectangle(buffer, 0xFFFFFF, *player);
 }
 
-extern "C" void GameOutputSound(game_memory * gameMemory, game_sound_output * soundBuffer)
+extern "C" GAME_OUTPUT_SOUND(GameOutputSound)
 {
   game_state* gameState = (game_state*)gameMemory->permanentStorage;
   gameState->volume = 10000;
@@ -84,19 +260,22 @@ void RenderScreen(game_offscreen_buffer* buffer, uint32_t color)
   }
 }
 
-void RenderRectangle(game_offscreen_buffer* buffer, uint32_t color, int x, int y, int width, int height)
+
+void DrawRectangle(game_offscreen_buffer* buffer, uint32_t color, rec r)
 {
+  int xMin = RoundToInt(r.pos.x - (r.size.x / 2.0f));
+  int yMin = RoundToInt(r.pos.y - (r.size.y / 2.0f));
+  int xMax = RoundToInt(r.pos.x + (r.size.x / 2.0f));
+  int yMax = RoundToInt(r.pos.y + (r.size.y / 2.0f));
   uint32_t* mem = (uint32_t*)buffer->memory;
-  for (int w = 0; w < width; w++)
+  for (int x = xMin; x < xMax; x++)
   {
-    for (int h = 0; h < height; h++)
+    for (int y = yMin; y < yMax; y++)
     {
-      int offsetX = w + x;
-      int offsetY = h + y;
-      if (offsetX >= 0 && offsetX < buffer->width &&
-          offsetY >= 0 && offsetY < buffer->height)
+      if (x >= 0 && x < buffer->width &&
+          y >= 0 && y < buffer->height)
       {
-        mem[offsetY * buffer->width + offsetX] = color;
+        mem[y * buffer->width + x] = color;
       }
     }
   }

@@ -23,6 +23,8 @@ static x_input_get_state* XInputGetState_ = XInputGetStateStub;
 #define XInputGetState XInputGetState_
 #define XInputSetState XInputSetState_
 
+#define ARRAYCOUNT(array) (sizeof(array) / sizeof((array)[0]))
+
 
 struct win32_window_dimension
 {
@@ -77,6 +79,7 @@ struct debug_audio_marker
 struct win32_state
 {
 	char *fileFullPath;
+
 	size_t recordIndex;
 	HANDLE playHandle;
 

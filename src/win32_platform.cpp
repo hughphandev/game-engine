@@ -15,8 +15,11 @@
 // TODO: Global for now
 static bool g_running;
 static bool g_pause;
+static bool g_audioSyncDisplay;
 static win32_offscreen_buffer g_backBuffer;
 static LPDIRECTSOUNDBUFFER g_secondaryBuffer;
+
+
 
 inline uint32_t SafeTruncateUInt64(uint64_t value)
 {
@@ -28,18 +31,17 @@ inline uint32_t SafeTruncateUInt64(uint64_t value)
 inline FILETIME Win32GetLastFileTime(char* fileName)
 {
   FILETIME result = {};
-
-  WIN32_FIND_DATA findData = {};
-  HANDLE fileHandle = FindFirstFile(fileName, &findData);
-  if (fileHandle != INVALID_HANDLE_VALUE)
+  WIN32_FILE_ATTRIBUTE_DATA findData = {};
+  if (GetFileAttributesExA(fileName, GetFileExInfoStandard, &findData))
   {
     result = findData.ftLastWriteTime;
-    FindClose(fileHandle);
   }
 
   return result;
 }
 
+GAME_UPDATE_AND_RENDER(GameUpdateAndRenderStub) {}
+GAME_OUTPUT_SOUND(GameOutputSoundStub) {}
 static win32_game_code Win32LoadGameCode(char* gameDllFullPath, char* tempGameDllFullPath)
 {
   win32_game_code gameCode = {};
@@ -80,21 +82,21 @@ static void Win32UnloadGameCode(win32_game_code* gameCode)
   gameCode->OutputSound = GameOutputSoundStub;
 }
 
-static void Win32LoadXInput()
-{
-  HMODULE xInputLibrary = LoadLibraryA("xinput1_4.dll");
-  if (!xInputLibrary)
-  {
-    xInputLibrary = LoadLibraryA("xinput1_3.dll");
-  }
-  if (xInputLibrary)
-  {
-    XInputGetState =
-      (x_input_get_state*)GetProcAddress(xInputLibrary, "XInputGetState");
-    XInputSetState =
-      (x_input_set_state*)GetProcAddress(xInputLibrary, "XInputSetState");
-  }
-}
+// static void Win32LoadXInput()
+// {
+//   HMODULE xInputLibrary = LoadLibraryA("xinput1_4.dll");
+//   if (!xInputLibrary)
+//   {
+//     xInputLibrary = LoadLibraryA("xinput1_3.dll");
+//   }
+//   if (xInputLibrary)
+//   {
+//     XInputGetState =
+//       (x_input_get_state*)GetProcAddress(xInputLibrary, "XInputGetState");
+//     XInputSetState =
+//       (x_input_set_state*)GetProcAddress(xInputLibrary, "XInputSetState");
+//   }
+// }
 
 void DEBUGPlatformFreeMemory(void* memory)
 {
@@ -117,7 +119,6 @@ debug_read_file_result DEBUGPlatformReadFile(char* fileName)
         DWORD bytesRead;
         if (ReadFile(fileHandle, result.contents, fileSize32, &bytesRead, 0) && fileSize32 == bytesRead)
         {
-          //TODO: File read sucessfully
           result.contentSize = bytesRead;
         }
         else
@@ -211,7 +212,8 @@ static void Win32BufferToWindow(HDC deviceContext,
                                 win32_offscreen_buffer* buffer, int x, int y,
                                 int windowWidth, int windowHeight)
 {
-  StretchDIBits(deviceContext, 0, 0, windowWidth, windowHeight, 0, 0,
+  //Note: not stretching for debug purpose!
+  StretchDIBits(deviceContext, 0, 0, buffer->width, buffer->height, 0, 0,
                 buffer->width, buffer->height, buffer->memory, &buffer->info,
                 DIB_RGB_COLORS, SRCCOPY);
 }
@@ -292,6 +294,11 @@ LRESULT CALLBACK MainWindowCallback(HWND window, UINT message, WPARAM wParam,
                                     LPARAM lParam)
 {
   LRESULT result = 0;
+
+  ASSERT(message != WM_KEYDOWN);
+  ASSERT(message != WM_KEYUP);
+  ASSERT(message != WM_SYSKEYDOWN);
+  ASSERT(message != WM_SYSKEYUP);
 
   switch (message)
   {
@@ -408,11 +415,14 @@ void Win32FillSoundBuffer(win32_sound_output* soundOutput, DWORD writePosition,
 }
 
 #if INTERNAL
+//TODO: Record to file for now. Change to memory or file maping if needed!
+
 static void Win32StartRecord(win32_state* recordState)
 {
   recordState->recordHandle = CreateFileA(recordState->fileFullPath, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
   SetFilePointer(recordState->recordHandle, 0, 0, FILE_BEGIN);
   recordState->isRecording = true;
+  recordState->recordIndex = 0;
 
   ASSERT(recordState->recordHandle != INVALID_HANDLE_VALUE);
 }
@@ -429,6 +439,7 @@ static void Win32RecordInput(game_input input, win32_state* recordState)
   }
   else
   {
+    //TODO: write entire gameMemory if possible!
     WriteFile(recordState->recordHandle, recordState->gameMemory, sizeof(game_state), &bytesWrite, 0);
   }
   recordState->recordIndex++;
@@ -459,7 +470,6 @@ static void Win32StopPlayback(win32_state* recordState)
   CloseHandle(recordState->playHandle);
   recordState->isPlaying = false;
 }
-#endif
 
 static void Win32Playback(game_input* input, win32_state* recordState)
 {
@@ -473,8 +483,7 @@ static void Win32Playback(game_input* input, win32_state* recordState)
       if (bytesRead == 0)
       {
         SetFilePointer(recordState->playHandle, 0, 0, FILE_BEGIN);
-        Win32StopPlayback(recordState);
-        Win32StartPlayback(recordState);
+        recordState->playIndex = 0;
       }
       else
       {
@@ -490,6 +499,14 @@ static void Win32Playback(game_input* input, win32_state* recordState)
     }
   }
 }
+#endif
+
+static void Win32ProcessKeyboardInput(button_state* button, bool isDown)
+{
+  ASSERT(button->isDown != isDown);
+  button->isDown = isDown;
+  button->halfTransitionCount++;
+}
 
 static void Win32ProcessPendingMessages(game_input* input, win32_state* recordState)
 {
@@ -498,7 +515,6 @@ static void Win32ProcessPendingMessages(game_input* input, win32_state* recordSt
   {
     switch (msg.message)
     {
-      // TODO: is it necessary to handle the WM_QUIT?
       case WM_QUIT:
       {
         g_running = false;
@@ -510,42 +526,79 @@ static void Win32ProcessPendingMessages(game_input* input, win32_state* recordSt
       case WM_KEYDOWN:
       case WM_KEYUP:
       {
-        input->keyCode = msg.wParam;
-        input->wasDown = ((msg.lParam & (1 << 30)) != 0);
-        input->isDown = ((msg.lParam & (1 << 31)) == 0);
+        //TODO: handle subframe input
+        bool wasDown = ((msg.lParam & (1 << 30)) != 0);
+        bool isDown = ((msg.lParam & (1 << 31)) == 0);
 
-        bool32 altKeyWasDown = (msg.lParam & (1 << 29));
-        if (altKeyWasDown && msg.wParam == VK_F4)
+        if (isDown != wasDown)
         {
-          g_running = false;
-        }
-
-        if (input->keyCode == 'P' && input->isDown)
-        {
-          g_pause = !g_pause;
-        }
-
-        if (input->keyCode == 'K' && input->isDown)
-        {
-          if (!recordState->isRecording)
+          if (msg.wParam == 'W')
           {
-            Win32StartRecord(recordState);
+            Win32ProcessKeyboardInput(&input->up, isDown);
+            OutputDebugString("W\n");
           }
-          else
+          if (msg.wParam == 'S')
           {
-            Win32StopRecord(recordState);
+            Win32ProcessKeyboardInput(&input->down, isDown);
+            OutputDebugString("S\n");
           }
-        }
+          if (msg.wParam == 'A')
+          {
+            Win32ProcessKeyboardInput(&input->left, isDown);
+            OutputDebugString("A\n");
+          }
+          if (msg.wParam == 'D')
+          {
+            Win32ProcessKeyboardInput(&input->right, isDown);
+            OutputDebugString("D\n");
+          }
 
-        if (input->keyCode == 'L' && input->isDown)
-        {
-          if (!recordState->isPlaying)
+          if (msg.wParam == 'K' && isDown)
           {
-            Win32StartPlayback(recordState);
+            if (!recordState->isRecording)
+            {
+              if (recordState->isPlaying)
+              {
+                Win32StopPlayback(recordState);
+              }
+              Win32StartRecord(recordState);
+            }
+            else
+            {
+              Win32StopRecord(recordState);
+            }
           }
-          else
+
+          if (msg.wParam == 'L' && isDown)
           {
-            Win32StopPlayback(recordState);
+            if (!recordState->isPlaying)
+            {
+              if (recordState->isRecording)
+              {
+                Win32StopRecord(recordState);
+              }
+              Win32StartPlayback(recordState);
+            }
+            else
+            {
+              Win32StopPlayback(recordState);
+            }
+          }
+
+          if (msg.wParam == 'P' && isDown)
+          {
+            g_pause = !g_pause;
+          }
+
+          if (msg.wParam == VK_F3 && isDown)
+          {
+            g_audioSyncDisplay = !g_audioSyncDisplay;
+          }
+
+          bool32 altKeyWasDown = (msg.lParam & (1 << 29));
+          if (altKeyWasDown && msg.wParam == VK_F4)
+          {
+            PostQuitMessage(0);
           }
         }
       }
@@ -559,35 +612,35 @@ static void Win32ProcessPendingMessages(game_input* input, win32_state* recordSt
   }
 
   // TODO: Controller Support ?
-  Win32LoadXInput();
-  for (DWORD i = 0; i < XUSER_MAX_COUNT; ++i)
-  {
-    XINPUT_STATE state;
-    if (XInputGetState(i, &state) == ERROR_SUCCESS)
-    {
-      XINPUT_GAMEPAD* pad = &state.Gamepad;
+  //   Win32LoadXInput();
+  //   for (DWORD i = 0; i < XUSER_MAX_COUNT; ++i)
+  //   {
+  //     XINPUT_STATE state;
+  //     if (XInputGetState(i, &state) == ERROR_SUCCESS)
+  //     {
+  //       XINPUT_GAMEPAD* pad = &state.Gamepad;
 
-      bool up = pad->wButtons & XINPUT_GAMEPAD_DPAD_UP;
-      bool down = pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN;
-      bool left = pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT;
-      bool right = pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT;
-      bool start = pad->wButtons & XINPUT_GAMEPAD_START;
-      bool back = pad->wButtons & XINPUT_GAMEPAD_BACK;
-      bool leftShoulder = pad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER;
-      bool rightShoulder = pad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER;
-      bool a = pad->wButtons & XINPUT_GAMEPAD_A;
-      bool b = pad->wButtons & XINPUT_GAMEPAD_B;
-      bool x = pad->wButtons & XINPUT_GAMEPAD_X;
-      bool y = pad->wButtons & XINPUT_GAMEPAD_Y;
+  //       bool up = pad->wButtons & XINPUT_GAMEPAD_DPAD_UP;
+  //       bool down = pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN;
+  //       bool left = pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT;
+  //       bool right = pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT;
+  //       bool start = pad->wButtons & XINPUT_GAMEPAD_START;
+  //       bool back = pad->wButtons & XINPUT_GAMEPAD_BACK;
+  //       bool leftShoulder = pad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER;
+  //       bool rightShoulder = pad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER;
+  //       bool a = pad->wButtons & XINPUT_GAMEPAD_A;
+  //       bool b = pad->wButtons & XINPUT_GAMEPAD_B;
+  //       bool x = pad->wButtons & XINPUT_GAMEPAD_X;
+  //       bool y = pad->wButtons & XINPUT_GAMEPAD_Y;
 
-      int16_t stickX = pad->sThumbLX;
-      int16_t stickY = pad->sThumbLY;
-    }
-    else
-    {
-      // TODO: Controller not available
-    }
-  }
+  //       int16_t stickX = pad->sThumbLX;
+  //       int16_t stickY = pad->sThumbLY;
+  //     }
+  //     else
+  //     {
+  //       // TODO: Controller not available
+  //     }
+  //   }
 }
 
 inline LARGE_INTEGER Win32GetWallClock()
@@ -638,67 +691,68 @@ void DebugAudioSync(game_offscreen_buffer* screen, win32_sound_output soundBuffe
                         top, top + cellHeight, writeColor);
 
   top += cellHeight;
-  DebugDrawVerticalLine(screen, padX + (int)(c * marker.flipPlayCursor),
-                        top, top + cellHeight, playColor);
-  DebugDrawVerticalLine(screen, padX + (int)(c * marker.flipWriteCursor),
-                        top, top + cellHeight, writeColor);
-  DebugDrawVerticalLine(screen, padX + (int)(c * marker.nextFrameBoundary),
-                        top, top + cellHeight, boundaryColor);
+  DebugDrawVerticalLine(screen, padX + (int)(c * marker.flipPlayCursor), top, top + cellHeight, playColor);
+  DebugDrawVerticalLine(screen, padX + (int)(c * marker.flipWriteCursor), top, top + cellHeight, writeColor);
+  DebugDrawVerticalLine(screen, padX + (int)(c * marker.nextFrameBoundary), top, top + cellHeight, boundaryColor);
 
   top += cellHeight;
-  DebugDrawVerticalLine(screen, padX + (int)(c * marker.expectedWritePosition),
-                        top, top + cellHeight, expectedColor);
-  DebugDrawVerticalLine(screen, padX + (int)(c * marker.expectedTargetCursor),
-                        top, top + cellHeight, expectedColor);
+  DebugDrawVerticalLine(screen, padX + (int)(c * marker.expectedWritePosition), top, top + cellHeight, expectedColor);
+  DebugDrawVerticalLine(screen, padX + (int)(c * marker.expectedTargetCursor), top, top + cellHeight, expectedColor);
 }
 #endif
 
-size_t CatStrings(char* sourceA, size_t sourceACount, char* sourceB, size_t sourceBCount, char* dest, size_t destCount)
+void CatStrings(char* sourceA, size_t sourceACount, char* sourceB, size_t sourceBCount, char* dest, size_t* destCount)
 {
-  if (destCount > sourceACount + sourceBCount)
+  for (size_t i = 0; i < sourceACount; ++i)
   {
-    for (size_t i = 0; i < sourceACount; ++i)
-    {
-      *(dest++) = sourceA[i];
-    }
-
-    for (size_t i = 0; i < sourceBCount; ++i)
-    {
-      *(dest++) = sourceB[i];
-    }
-    *dest = 0;
-    return sourceACount + sourceBCount;
+    *(dest++) = sourceA[i];
+    *destCount++;
   }
-  return 0;
+
+  for (size_t i = 0; i < sourceBCount; ++i)
+  {
+    *(dest++) = sourceB[i];
+    *destCount++;
+  }
+  *dest = 0;
 }
 
-#define MonitorRefreshHz 60
-#define GameUpdateHz (MonitorRefreshHz / 2)
+size_t StringLength(char* str)
+{
+  size_t result = 0;
+  while (*str++)
+  {
+    result++;
+  }
+  return result;
+}
+
+
 INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
                       INT cmdShow)
 {
   //Note: Dont use MAX_PATH in release code 'cause it's wrong
-  char gamePath[MAX_PATH] = {};
-  char* onePastLastSlash = gamePath;
-  GetModuleFileName(instance, gamePath, MAX_PATH);
-  for (char* scan = gamePath; *scan; scan++)
+  char gameStem[MAX_PATH] = {};
+  char* onePastLastSlash = gameStem;
+  GetModuleFileName(instance, gameStem, MAX_PATH);
+  for (char* scan = gameStem; *scan; scan++)
   {
     if (*scan == '\\')
     {
       onePastLastSlash = scan + 1;
     }
   }
+  size_t gameStemCount = onePastLastSlash - gameStem;
 
   char gameDLLName[] = "game.dll";
   char gameDllFullPath[MAX_PATH] = {};
-  size_t gamePathCount = onePastLastSlash - gamePath;
-
-  CatStrings(gamePath, gamePathCount, gameDLLName, sizeof(gameDLLName) - 1, gameDllFullPath, MAX_PATH);
+  size_t gameFullPathCount = 0;
+  CatStrings(gameStem, gameStemCount, gameDLLName, StringLength(gameDLLName), gameDllFullPath, &gameFullPathCount);
 
   char tempGameDllName[] = "game_temp.dll";
   char tempGameDllFullPath[MAX_PATH] = {};
-
-  CatStrings(gamePath, onePastLastSlash - gamePath, tempGameDllName, sizeof(tempGameDllName) - 1, tempGameDllFullPath, MAX_PATH);
+  size_t tempGameDllFullPathCount = 0;
+  CatStrings(gameStem, onePastLastSlash - gameStem, tempGameDllName, StringLength(tempGameDllName), tempGameDllFullPath, &tempGameDllFullPathCount);
 
   // NOTE: Increase scheduler granularity
   UINT msMinimumTimeRes = 1;
@@ -713,7 +767,7 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
 
   if (RegisterClassA(&windowClass))
   {
-    HWND window = CreateWindowExA(WS_EX_TOPMOST | WS_EX_LAYERED,
+    HWND window = CreateWindowExA(WS_EX_LAYERED,
                                   windowClass.lpszClassName, "Main",
                                   WS_OVERLAPPEDWINDOW | WS_VISIBLE,
                                   CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
@@ -725,27 +779,35 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
     {
       g_running = true;
 
-      float secondsPerUpdate = 1.0f / GameUpdateHz;
+      int monitorRefreshHz = 60;
+      HDC refreshDC = GetDC(window);
+      int win32MonitorRefreshHz = GetDeviceCaps(refreshDC, VREFRESH);
+      ReleaseDC(window, refreshDC);
+      if (win32MonitorRefreshHz > 1)
+      {
+        monitorRefreshHz = win32MonitorRefreshHz;
+      }
+      float gameUpdateHz = (monitorRefreshHz / 2.0f);
+      float secondsPerUpdate = 1.0f / gameUpdateHz;
       win32_sound_output soundOutput = {};
       soundOutput.runningSampleIndex = 0;
       soundOutput.bytesPerSample = sizeof(int16_t) * 2;
       soundOutput.samplesPerSecond = 48000;
       soundOutput.secondaryBufferSize = soundOutput.samplesPerSecond * soundOutput.bytesPerSample;
-      soundOutput.safetyBytes = (soundOutput.samplesPerSecond * soundOutput.bytesPerSample / GameUpdateHz) / 2;
+      soundOutput.safetyBytes = (int)((float)(soundOutput.samplesPerSecond * soundOutput.bytesPerSample / gameUpdateHz) / 3.0f);
       Win32InitDSound(window, soundOutput.samplesPerSecond,
                       soundOutput.secondaryBufferSize);
       Win32ClearBuffer(&soundOutput);
       g_secondaryBuffer->Play(0, 0, DSBPLAY_LOOPING);
 
-      int16_t* samples = (int16_t*)VirtualAlloc(0, soundOutput.secondaryBufferSize,
-                                                MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+      int16_t* samples = (int16_t*)VirtualAlloc(0, soundOutput.secondaryBufferSize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+
 #if INTERNAL
       LPVOID baseAddress = (LPVOID)TERABYTES((uint64_t)2);
 #else
       LPVOID baseAddress = 0;
 #endif
       // Static Memory allocation at start up
-
       game_memory gameMemory = {};
       gameMemory.permanentStorageSize = MEGABYTES(64);
       gameMemory.transientStorageSize = GIGABYTES(1);
@@ -757,6 +819,7 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
 
       win32_state recordState = {};
 
+      //TODO: Try MEM_LARGE_PAGES to increase performace. call AdjustTokenPrivileges on winxp 
       recordState.gameMemory = VirtualAlloc(baseAddress, (size_t)totalSize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
       gameMemory.permanentStorage = (uint8_t*)recordState.gameMemory;
@@ -769,17 +832,21 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
 
         float secondsElapsed = 0.0f;
         LARGE_INTEGER beginTimer = Win32GetWallClock();
-
-        bool soundIsValid = false;
-
         LARGE_INTEGER frequency = {};
         QueryPerformanceFrequency(&frequency);
 
+        bool soundIsValid = false;
+
         win32_game_code game = Win32LoadGameCode(gameDllFullPath, tempGameDllFullPath);
+
+        game_input gameInput[2] = {};
+        game_input* input = &gameInput[0];
+        game_input* lastInput = &gameInput[1];
 
         char recordFile[] = "record.gi";
         char recordFileFullPath[MAX_PATH];
-        CatStrings(gamePath, gamePathCount, recordFile, sizeof(recordFile), recordFileFullPath, MAX_PATH);
+        size_t recordFileCount = 0;
+        CatStrings(gameStem, gameStemCount, recordFile, sizeof(recordFile), recordFileFullPath, &recordFileCount);
 
         recordState.fileFullPath = recordFileFullPath;
 
@@ -800,17 +867,38 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
             Win32UnloadGameCode(&game);
             game = Win32LoadGameCode(gameDllFullPath, tempGameDllFullPath);
           }
-          game_input input = {};
-          Win32ProcessPendingMessages(&input, &recordState);
+
+          *input = {};
+          int buttonsCount = ARRAYCOUNT(input->buttons);
+          for (int i = 0; i < buttonsCount; ++i)
+          {
+            // NOTE: reserve the button state to next frame
+            input->buttons[i].isDown = lastInput->buttons[i].isDown;
+          }
+          Win32ProcessPendingMessages(input, &recordState);
+
+          //TODO: Hacky thing to get going!
+          POINT mousePoint;
+          GetCursorPos(&mousePoint);
+          ScreenToClient(window, &mousePoint);
+          input->mouseX = mousePoint.x;
+          input->mouseY = mousePoint.y;
+          input->mouseZ = 0;
+          input->mouseButtonState[0] = GetKeyState(VK_LBUTTON) & (1 << 15);
+          input->mouseButtonState[1] = GetKeyState(VK_RBUTTON) & (1 << 15);
+          input->mouseButtonState[2] = GetKeyState(VK_MBUTTON) & (1 << 15);
+          input->mouseButtonState[3] = GetKeyState(VK_XBUTTON1) & (1 << 15);
+          input->mouseButtonState[4] = GetKeyState(VK_XBUTTON2) & (1 << 15);
+
           // Note: Update the game in fixed interval
-          input.elapsed = secondsElapsed;
+          input->timeStep = secondsPerUpdate;
           if (recordState.isRecording)
           {
-            Win32RecordInput(input, &recordState);
+            Win32RecordInput(*input, &recordState);
           }
           else if (recordState.isPlaying)
           {
-            Win32Playback(&input, &recordState);
+            Win32Playback(input, &recordState);
           }
 
           if (!g_pause)
@@ -821,9 +909,10 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
             buffer.height = g_backBuffer.height;
             buffer.pitch = g_backBuffer.pitch;
 
-            game.UpdateAndRender(&gameMemory, &buffer, input);
+            game.UpdateAndRender(&gameMemory, &buffer, *input);
 
-            // TODO: Not Tested yet. Properly buggy!
+
+            // TODO: Continue when has more precise profiling tool!
             DWORD writeCursor;
             DWORD playCursor;
             if (SUCCEEDED(g_secondaryBuffer->GetCurrentPosition(&playCursor, &writeCursor)))
@@ -837,11 +926,13 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
               DWORD writePosition = (soundOutput.runningSampleIndex * soundOutput.bytesPerSample) %
                 soundOutput.secondaryBufferSize;
 
-              DWORD bytesPerFrame = (soundOutput.samplesPerSecond * soundOutput.bytesPerSample) / GameUpdateHz;
+              DWORD bytesPerFrame = (DWORD)((float)(soundOutput.samplesPerSecond * soundOutput.bytesPerSample) / gameUpdateHz);
 
               float secondsSinceFlip = Win32GetSecondsElapsed(beginTimer, Win32GetWallClock(), frequency);
+
               DWORD nextFrameBoundary = playCursor + bytesPerFrame;
               DWORD bytesSinceFlip = (DWORD)(secondsSinceFlip * (soundOutput.samplesPerSecond * soundOutput.bytesPerSample));
+
               if (nextFrameBoundary < bytesSinceFlip)
               {
                 nextFrameBoundary += soundOutput.secondaryBufferSize;
@@ -946,6 +1037,9 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
               g_secondaryBuffer->GetCurrentPosition(&playCursorWhenFlip, &writeCursorWhenFlip);
               marker.flipPlayCursor = playCursorWhenFlip;
               marker.flipWriteCursor = writeCursorWhenFlip;
+            }
+            if (g_audioSyncDisplay)
+            {
               DebugAudioSync(&buffer, soundOutput, marker);
             }
 #endif
@@ -956,14 +1050,12 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
             ReleaseDC(window, deviceContext);
 
 #if INTERNAL
-            {
-              char textBuffer[255] = {};
-              sprintf_s(textBuffer, "%.2fms\n", 1000.0f * secondsElapsed);
-              OutputDebugString(textBuffer);
-            }
             ASSERT(debugPlayCursorsIndex < marker.playCursorCount);
             debugPlayCursorsIndex = (debugPlayCursorsIndex + 1) % marker.playCursorCount;
 #endif
+            game_input* tempInput = input;
+            input = lastInput;
+            lastInput = tempInput;
           }
         }
       }

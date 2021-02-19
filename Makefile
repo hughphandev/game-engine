@@ -1,5 +1,5 @@
 CXX = @cl
-CPPFLAGS = -DSLOW=1 -DINTERNAL=1 -W4 -MT -wd4701 -wd4100 -wd4189 -nologo -Oi -Od -GR- -Gm- -Z7 -EHa
+CPPFLAGS = -DSLOW=1 -DINTERNAL=1 -W4 -MT -wd4701 -wd4100 -wd4189 -wd4201 -nologo -Oi -Od -GR- -Gm- -Z7 -EHa
 LDLIBS = gdi32.lib user32.lib winmm.lib
 LDFLAGS = -incremental:no
 32BITFLAGS = -opt:ref -subsystem:windows,5.1
