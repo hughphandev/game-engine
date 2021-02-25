@@ -208,18 +208,18 @@ static void Win32ResizeDIBSection(win32_offscreen_buffer* buffer, int width,
   buffer->pitch = buffer->width * bytePerPixel;
 }
 
-static void Win32BufferToWindow(HDC deviceContext,
-                                win32_offscreen_buffer* buffer, int x, int y,
-                                int windowWidth, int windowHeight)
+static void Win32BufferToWindow(HDC deviceContext, win32_offscreen_buffer* buffer, int windowWidth, int windowHeight)
 {
   //Note: not stretching for debug purpose!
-  StretchDIBits(deviceContext, 0, 0, buffer->width, buffer->height, 0, 0,
-                buffer->width, buffer->height, buffer->memory, &buffer->info,
-                DIB_RGB_COLORS, SRCCOPY);
+  //TODO: switch to aspect ratio in the future!
+  int offSetX = (windowWidth - buffer->width) / 2;
+  int offSetY = (windowHeight - buffer->height) / 2;
+  PatBlt(deviceContext, 0, 0, windowWidth, windowHeight, WHITENESS);
+
+  StretchDIBits(deviceContext, offSetX, offSetY, buffer->width, buffer->height, 0, 0, buffer->width, buffer->height, buffer->memory, &buffer->info, DIB_RGB_COLORS, SRCCOPY);
 }
 
-void Win32InitDSound(HWND window, int32_t samplesPerSecond,
-                     int32_t bufferSize)
+void Win32InitDSound(HWND window, int32_t samplesPerSecond, int32_t bufferSize)
 {
   HMODULE dSoundLibrary = LoadLibraryA("dsound.dll");
 
@@ -274,8 +274,7 @@ void Win32InitDSound(HWND window, int32_t samplesPerSecond,
       bufferDescription.dwBufferBytes = bufferSize;
       bufferDescription.lpwfxFormat = &waveFormat;
 
-      if (SUCCEEDED(directSound->CreateSoundBuffer(&bufferDescription,
-                                                   &g_secondaryBuffer, 0)))
+      if (SUCCEEDED(directSound->CreateSoundBuffer(&bufferDescription, &g_secondaryBuffer, 0)))
       {
       }
     }
@@ -337,7 +336,7 @@ LRESULT CALLBACK MainWindowCallback(HWND window, UINT message, WPARAM wParam,
       int y = paint.rcPaint.top;
       int width = paint.rcPaint.right - paint.rcPaint.left;
       int height = paint.rcPaint.bottom - paint.rcPaint.top;
-      Win32BufferToWindow(deviceContext, &g_backBuffer, 0, 0, width, height);
+      Win32BufferToWindow(deviceContext, &g_backBuffer, width, height);
 
       EndPaint(window, &paint);
     }
@@ -773,7 +772,7 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
                                   CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
                                   CW_USEDEFAULT, 0, 0, instance, 0);
 
-    Win32ResizeDIBSection(&g_backBuffer, 1280, 720);
+    Win32ResizeDIBSection(&g_backBuffer, 1024, 576);
 
     if (window)
     {
@@ -1046,7 +1045,7 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
 
             win32_window_dimension wd = Win32GetWindowDimension(window);
             HDC deviceContext = GetDC(window);
-            Win32BufferToWindow(deviceContext, &g_backBuffer, 0, 0, wd.width, wd.height);
+            Win32BufferToWindow(deviceContext, &g_backBuffer, wd.width, wd.height);
             ReleaseDC(window, deviceContext);
 
 #if INTERNAL

@@ -1,7 +1,7 @@
 #include "game.h"
 
-void RenderScreen(game_offscreen_buffer* buffer, uint32_t color);
-void DrawRectangle(game_offscreen_buffer* buffer, uint32_t color, rec r);
+void RenderScreen(game_offscreen_buffer* buffer, u32 color);
+void DrawRectangle(game_offscreen_buffer* buffer, u32 color, rec r);
 
 #define PI 3.14159f
 
@@ -34,52 +34,80 @@ float Max(float a, float b)
   return a > b ? a : b;
 }
 
-vector2 operator+(vector2 l, vector2 r)
+v2 operator*(v2 lhs, float rhs)
 {
-  vector2 result = {};
-  result.x = l.x + r.x;
-  result.y = l.y + r.y;
-  return result;
+  return { lhs.x * rhs, lhs.y * rhs };
+}
+v2 operator/(v2 lhs, float rhs)
+{
+  return { lhs.x / rhs, lhs.y / rhs };
+}
+v2 operator+(v2 lhs, float rhs)
+{
+  return { lhs.x + rhs, lhs.y + rhs };
+}
+v2 operator-(v2 lhs, float rhs)
+{
+  return { lhs.x - rhs, lhs.y - rhs };
 }
 
-vector2 operator-(vector2 l, vector2 r)
+v2 operator*(v2 lhs, v2 rhs)
 {
-  vector2 result = {};
-  result.x = l.x - r.x;
-  result.y = l.y - r.y;
-  return result;
+  return { lhs.x * rhs.x, lhs.y * rhs.y };
+}
+v2 operator/(v2 lhs, v2 rhs)
+{
+  return { lhs.x / rhs.x, lhs.y / rhs.y };
+}
+v2 operator+(v2 lhs, v2 rhs)
+{
+  return { lhs.x + rhs.x, lhs.y + rhs.y };
+}
+v2 operator-(v2 lhs, v2 rhs)
+{
+  return { lhs.x - rhs.x, lhs.y - rhs.y };
 }
 
-vector2 operator/(vector2 l, vector2 r)
+v2 v2::operator*=(v2 lhs)
 {
-  vector2 result = {};
-  result.x = l.x / r.x;
-  result.y = l.y / r.y;
-  return result;
+  return { this->x * lhs.x, this->y * lhs.y };
+}
+v2 v2::operator/=(v2 lhs)
+{
+  return { this->x / lhs.x, this->y / lhs.y };
+}
+v2 v2::operator+=(v2 lhs)
+{
+  return { this->x + lhs.x, this->y + lhs.y };
+}
+v2 v2::operator-=(v2 lhs)
+{
+  return { this->x - lhs.x, this->y - lhs.y };
+}
+bool v2::operator==(v2 lhs)
+{
+  return (this->x == lhs.x && this->y == lhs.y);
 }
 
-vector2 operator/(vector2 l, float r)
+v2 v2::operator*=(float lhs)
 {
-  vector2 result = {};
-  result.x = l.x / r;
-  result.y = l.y / r;
-  return result;
+  return { this->x * lhs, this->y * lhs };
 }
-
-vector2 operator*(vector2 l, float r)
+v2 v2::operator/=(float lhs)
 {
-  vector2 result = {};
-  result.x = l.x * r;
-  result.y = l.y * r;
-  return result;
+  return { this->x / lhs, this->y / lhs };
 }
-
-vector2 operator*(vector2 l, vector2 r)
+v2 v2::operator+=(float lhs)
 {
-  vector2 result = {};
-  result.x = l.x * r.x;
-  result.y = l.y * r.y;
-  return result;
+  return { this->x + lhs, this->y + lhs };
+}
+v2 v2::operator-=(float lhs)
+{
+  return { this->x - lhs, this->y - lhs };
+}
+bool v2::operator==(float lhs)
+{
+  return (this->x == lhs && this->y == lhs);
 }
 
 void Swap(float* l, float* r)
@@ -89,13 +117,15 @@ void Swap(float* l, float* r)
   *r = temp;
 }
 
-bool RayToRec(vector2 rayOrigin, vector2 rayDir, rec r, vector2* contactPoint, vector2* contactNormal)
+bool RayToRec(v2 rayOrigin, v2 rayDir, rec r, v2* contactPoint, v2* contactNormal)
 {
-  vector2 minPos = r.pos - (r.size / 2.0f);
-  vector2 maxPos = r.pos + (r.size / 2.0f);
+  if (rayDir == 0.0f) return false;
 
-  vector2 tNear = (minPos - rayOrigin) / rayDir;
-  vector2 tFar = (maxPos - rayOrigin) / rayDir;
+  v2 minPos = r.pos;
+  v2 maxPos = r.pos + r.size;
+
+  v2 tNear = (minPos - rayOrigin) / rayDir;
+  v2 tFar = (maxPos - rayOrigin) / rayDir;
 
   if (tNear.x > tFar.x) Swap(&tNear.x, &tFar.x);
   if (tNear.y > tFar.y) Swap(&tNear.y, &tFar.y);
@@ -105,12 +135,14 @@ bool RayToRec(vector2 rayOrigin, vector2 rayDir, rec r, vector2* contactPoint, v
   float tHitNear = Max(tNear.x, tNear.y);
   float tHitFar = Min(tFar.x, tFar.y);
 
-  if (tHitFar < 0.0f) return false;
-  if (tHitNear > 1.0f) return false;
+  //Note: check if value is a floating point number!
+  if (tHitNear != tHitNear) return false;
 
-  //TODO: right and bottom edge collision
-  contactPoint->x = rayOrigin.x + tHitNear * rayDir.x;
-  contactPoint->y = rayOrigin.y + tHitNear * rayDir.y;
+  if (tHitFar < 0.0f) return false;
+  if (tHitNear > 1.0f || tHitNear < 0.0f) return false;
+
+  contactPoint->x = rayOrigin.x + (tHitNear * rayDir.x);
+  contactPoint->y = rayOrigin.y + (tHitNear * rayDir.y);
 
   if (tNear.x > tNear.y)
   {
@@ -138,18 +170,22 @@ bool RayToRec(vector2 rayOrigin, vector2 rayDir, rec r, vector2* contactPoint, v
   return true;
 }
 
-void DrawLine(game_offscreen_buffer* buffer, vector2 from, vector2 to, uint32_t lineColor)
+void DrawLine(game_offscreen_buffer* buffer, v2 from, v2 to, u32 lineColor)
 {
-  //TODO: Handle out of screen bound
-  uint32_t* pixel = (uint32_t*)buffer->memory;
+  u32* pixel = (u32*)buffer->memory;
   if (from.x == to.x)
   {
     int startY = RoundToInt(Min(from.y, to.y));
     int endY = RoundToInt(Max(from.y, to.y));
     int x = RoundToInt(from.x);
+    int screenBound = buffer->width * buffer->height;
     for (int i = startY; i < endY; ++i)
     {
-      pixel[i * buffer->width + x] = lineColor;
+      int pixelIndex = i * buffer->width + x;
+      if (pixelIndex >= 0 && pixelIndex < screenBound)
+      {
+        pixel[i * buffer->width + x] = lineColor;
+      }
     }
   }
   else
@@ -170,6 +206,36 @@ void DrawLine(game_offscreen_buffer* buffer, vector2 from, vector2 to, uint32_t 
 
 }
 
+v2 Abs(v2 v)
+{
+  return {Abs(v.x), Abs(v.y)};
+}
+
+void MoveAndSlide(rec* target, v2 moveVec, rec* others, int recCount)
+{
+  for (int i = 0; i < recCount; ++i)
+  {
+    rec imRec = {};
+    imRec.size = others[i].size + target->size;
+    imRec.pos = others[i].pos - target->size;
+
+    v2 contactNormal = {};
+    v2 contactPoint = {};
+
+    if (RayToRec(target->pos, moveVec, imRec, &contactPoint, &contactNormal))
+    {
+      //Note: only true with aabb
+      //TODO: solution for generic case if needed
+      v2 newMoveVec = {};
+      newMoveVec.x = (contactNormal.x != 0.0f) ? 0 : moveVec.x;
+      newMoveVec.y = (contactNormal.y != 0.0f) ? 0 : moveVec.y;
+      target->pos = contactPoint + newMoveVec;
+      return;
+    }
+  }
+  target->pos = target->pos + moveVec;
+}
+
 extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 {
   if (!gameMemory->initialized)
@@ -183,7 +249,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   player->size.x = 10;
   player->size.y = 10;
 
-  vector2 velocity = { };
+  v2 velocity = { };
   if (input.right.isDown)
   {
     velocity.x = 200.0f;
@@ -201,24 +267,15 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     velocity.x = -200.0f;
   }
 
-  rec r = { 200, 100, 100, 100 };
-  uint32_t recColor = 0x00FFFF;
+  rec r[] = { { 200, 100, 100, 100 }, {400, 200, 100, 200} };
+  u32 recColor = 0x00FFFF;
+
+  MoveAndSlide(player, velocity * input.timeStep, r, 2);
 
   RenderScreen(buffer, 0);
-  vector2 contactNormal = {};
-  vector2 contactPoint = {};
-  vector2 mousePos = { (float)input.mouseX, (float)input.mouseY };
-  if (RayToRec(player->pos, velocity * input.timeStep, r, &contactPoint, &contactNormal))
-  {
-    recColor = 0xFF0000;
-    player->pos = contactPoint + (contactNormal * (player->size / 2.0f));
-  }
-  else
-  {
-    player->pos = player->pos + velocity * input.timeStep;
-  }
-
-  DrawRectangle(buffer, recColor, r);
+  v2 mousePos = { (float)input.mouseX, (float)input.mouseY };
+  DrawRectangle(buffer, recColor, r[0]);
+  DrawRectangle(buffer, recColor, r[1]);
   DrawRectangle(buffer, 0xFFFFFF, *player);
 }
 
@@ -230,11 +287,11 @@ extern "C" GAME_OUTPUT_SOUND(GameOutputSound)
 
   int wavePeriod = soundBuffer->samplesPerSecond / gameState->toneHZ;
 
-  int16_t* sampleOut = soundBuffer->samples;
+  i16* sampleOut = soundBuffer->samples;
   for (int i = 0; i < soundBuffer->sampleCount; ++i)
   {
     float sineValue = sinf(gameState->tSine);
-    int16_t sampleValue = (int16_t)(sineValue * gameState->volume);
+    i16 sampleValue = (i16)(sineValue * gameState->volume);
     *sampleOut++ = sampleValue;
     *sampleOut++ = sampleValue;
 
@@ -246,12 +303,12 @@ extern "C" GAME_OUTPUT_SOUND(GameOutputSound)
   }
 }
 
-void RenderScreen(game_offscreen_buffer* buffer, uint32_t color)
+void RenderScreen(game_offscreen_buffer* buffer, u32 color)
 {
-  uint8_t* row = (uint8_t*)buffer->memory;
+  u8* row = (u8*)buffer->memory;
   for (int y = 0; y < buffer->height; ++y)
   {
-    uint32_t* pixel = (uint32_t*)row;
+    u32* pixel = (u32*)row;
     for (int x = 0; x < buffer->width; ++x)
     {
       *pixel++ = color;
@@ -261,13 +318,13 @@ void RenderScreen(game_offscreen_buffer* buffer, uint32_t color)
 }
 
 
-void DrawRectangle(game_offscreen_buffer* buffer, uint32_t color, rec r)
+void DrawRectangle(game_offscreen_buffer* buffer, u32 color, rec r)
 {
-  int xMin = RoundToInt(r.pos.x - (r.size.x / 2.0f));
-  int yMin = RoundToInt(r.pos.y - (r.size.y / 2.0f));
-  int xMax = RoundToInt(r.pos.x + (r.size.x / 2.0f));
-  int yMax = RoundToInt(r.pos.y + (r.size.y / 2.0f));
-  uint32_t* mem = (uint32_t*)buffer->memory;
+  int xMin = RoundToInt(r.pos.x);
+  int yMin = RoundToInt(r.pos.y);
+  int xMax = RoundToInt(r.pos.x + r.size.x);
+  int yMax = RoundToInt(r.pos.y + r.size.y);
+  u32* mem = (u32*)buffer->memory;
   for (int x = xMin; x < xMax; x++)
   {
     for (int y = yMin; y < yMax; y++)
