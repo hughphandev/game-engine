@@ -19,8 +19,6 @@ static bool g_audioSyncDisplay;
 static win32_offscreen_buffer g_backBuffer;
 static LPDIRECTSOUNDBUFFER g_secondaryBuffer;
 
-
-
 inline uint32_t SafeTruncateUInt64(uint64_t value)
 {
   // TODO: Define maximum value
@@ -438,8 +436,8 @@ static void Win32RecordInput(game_input input, win32_state* recordState)
   }
   else
   {
-    //TODO: write entire gameMemory if possible!
-    WriteFile(recordState->recordHandle, recordState->gameMemory, sizeof(game_state), &bytesWrite, 0);
+    //TODO: write to disk if viable
+    memcpy(recordState->tempGameMemory, recordState->gameMemory, recordState->memorySize);
   }
   recordState->recordIndex++;
 
@@ -456,7 +454,6 @@ static void Win32StartPlayback(win32_state* recordState)
 {
   recordState->playHandle = CreateFileA(recordState->fileFullPath, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
 
-
   ASSERT(recordState->playHandle != INVALID_HANDLE_VALUE);
 
   recordState->isPlaying = true;
@@ -464,10 +461,13 @@ static void Win32StartPlayback(win32_state* recordState)
 
 }
 
-static void Win32StopPlayback(win32_state* recordState)
+static void Win32StopPlayback(game_input* input, win32_state* recordState)
 {
   CloseHandle(recordState->playHandle);
   recordState->isPlaying = false;
+
+  //NOTE: clear input when finish playback
+  *input = {};
 }
 
 static void Win32Playback(game_input* input, win32_state* recordState)
@@ -481,8 +481,8 @@ static void Win32Playback(game_input* input, win32_state* recordState)
     {
       if (bytesRead == 0)
       {
-        SetFilePointer(recordState->playHandle, 0, 0, FILE_BEGIN);
         recordState->playIndex = 0;
+        SetFilePointer(recordState->playHandle, 0, 0, FILE_BEGIN);
       }
       else
       {
@@ -492,10 +492,9 @@ static void Win32Playback(game_input* input, win32_state* recordState)
   }
   else
   {
-    if (ReadFile(recordState->playHandle, recordState->gameMemory, sizeof(game_state), &bytesRead, 0))
-    {
-      recordState->playIndex++;
-    }
+    //TODO: write to disk if viable
+    memcpy(recordState->gameMemory, recordState->tempGameMemory, recordState->memorySize);
+    recordState->playIndex++;
   }
 }
 #endif
@@ -558,7 +557,7 @@ static void Win32ProcessPendingMessages(game_input* input, win32_state* recordSt
             {
               if (recordState->isPlaying)
               {
-                Win32StopPlayback(recordState);
+                Win32StopPlayback(input, recordState);
               }
               Win32StartRecord(recordState);
             }
@@ -580,7 +579,7 @@ static void Win32ProcessPendingMessages(game_input* input, win32_state* recordSt
             }
             else
             {
-              Win32StopPlayback(recordState);
+              Win32StopPlayback(input, recordState);
             }
           }
 
@@ -808,8 +807,8 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
 #endif
       // Static Memory allocation at start up
       game_memory gameMemory = {};
-      gameMemory.permanentStorageSize = MEGABYTES(64);
-      gameMemory.transientStorageSize = GIGABYTES(1);
+      gameMemory.permanentStorageSize = MEGABYTES(32);
+      gameMemory.transientStorageSize = MEGABYTES(512);
       gameMemory.DEBUGPlatformFreeMemory = DEBUGPlatformFreeMemory;
       gameMemory.DEBUGPlatformReadFile = DEBUGPlatformReadFile;
       gameMemory.DEBUGPlatformWriteFile = DEBUGPlatformWriteFile;
@@ -820,6 +819,7 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
 
       //TODO: Try MEM_LARGE_PAGES to increase performace. call AdjustTokenPrivileges on winxp 
       recordState.gameMemory = VirtualAlloc(baseAddress, (size_t)totalSize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+      recordState.tempGameMemory = VirtualAlloc((LPVOID)((u64)baseAddress + totalSize), (size_t)totalSize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
       gameMemory.permanentStorage = (uint8_t*)recordState.gameMemory;
       gameMemory.transientStorage = (uint8_t*)gameMemory.permanentStorage + gameMemory.permanentStorageSize;
@@ -895,7 +895,7 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
           {
             Win32RecordInput(*input, &recordState);
           }
-          else if (recordState.isPlaying)
+          if (recordState.isPlaying)
           {
             Win32Playback(input, &recordState);
           }

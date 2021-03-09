@@ -1,9 +1,11 @@
 @echo off
-set CFLAGS=-DSLOW=1 -DINTERNAL=1 -W4 -MT -wd4701 -wd4100 -wd4189 -wd4201 -nologo -Oi -Od -GR- -Gm- -Z7 -EHa
+set CFLAGS=-DSLOW=1 -DINTERNAL=1 -W4 -MT -wd4701 -wd4100 -wd4189 -wd4201 -nologo -Oi -Od -GR- -Gm- -Z7 -EHa 
 
 set LDLIBS=gdi32.lib user32.lib winmm.lib
 
 set LDFLAGS=-incremental:no
+
+set OPTIMIZE=/0i /02 /fp:fast
 
 set PROJDIR=%CD%\
 set SOURCEDIR=%PROJDIR%src\

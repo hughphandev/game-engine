@@ -88,6 +88,8 @@ struct win32_state
 
 	void* gameMemory;
 	DWORD memorySize;
+	//TODO: remove if write to disk is viable!
+	void* tempGameMemory;
 
 	bool isRecording;
 	bool isPlaying;

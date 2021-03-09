@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <math.h>
+#include "jusa_math.h"
 
 typedef uint64_t u64;
 typedef uint32_t u32;
@@ -92,44 +93,110 @@ struct game_input
   float timeStep;
 }; // TODO: Clean up
 
-struct v2
-{
-  float x, y;
-
-  v2 operator*=(v2 lhs);
-  v2 operator/=(v2 lhs);
-  v2 operator+=(v2 lhs);
-  v2 operator-=(v2 lhs);
-  bool operator==(v2 lhs);
-  v2 operator*=(float lhs);
-  v2 operator/=(float lhs);
-  v2 operator+=(float lhs);
-  v2 operator-=(float lhs);
-  bool operator==(float lhs);
-};
-v2 operator*(v2 lhs, v2 rhs);
-v2 operator/(v2 lhs, v2 rhs);
-v2 operator+(v2 lhs, v2 rhs);
-v2 operator-(v2 lhs, v2 rhs);
-v2 operator*(v2 lhs, float rhs);
-v2 operator/(v2 lhs, float rhs);
-v2 operator+(v2 lhs, float rhs);
-v2 operator-(v2 lhs, float rhs);
-
 struct rec
 {
-  v2 pos;
-  v2 size;
+  union
+  {
+    struct
+    {
+      v2 pos;
+      v2 size;
+    };
+    struct
+    {
+      float x;
+      float y;
+      float width;
+      float height;
+    };
+  };
+
+  inline v2 GetMinBound();
+  inline v2 GetMaxBound();
 };
+
+struct game_camera
+{
+  v2 offSet;
+  v2 pos;
+
+  float pixelPerMeter;
+};
+
+struct memory_pool
+{
+  void* base;
+  size_t used;
+  size_t size;
+};
+
+struct img
+{
+  u32* pixel;
+  u32 width;
+  u32 height;
+};
+
+struct tile
+{
+  rec bound;
+  img *texture;
+};
+
+struct game_world
+{
+  game_camera* cam;
+
+  rec* obj;
+  u32 objCount;
+
+  tile* tileMap;
+  u32 tileCountX;
+  u32 tileCountY;
+  v2 tileSizeInMeter;
+};
+
+
 
 struct game_state
 {
-  float tSine;
-  int volume;
-  int toneHZ;
+  memory_pool pool;
+  game_world* world;
 
   rec player;
+  img background;
 };
+
+#pragma pack(push, 1)
+struct bmp_header
+{
+  //BMP Header
+  u16 signature;
+  u32 fileSize;
+  u16 reserved1;
+  u16 reserved2;
+  u32 offSet;
+
+  //DIB Header
+  u32 headerSize;
+  u32 width;
+  u32 height;
+  u16 planes;
+  u16 bitsPerPixel;
+  u32 compression;
+  u32 sizeOfBitMap;
+  u32 printWidth;
+  u32 printHeight;
+  u32 colorPalette;
+  u32 important;
+
+  u32 redMask;
+  u32 greenMask;
+  u32 blueMask;
+  u32 alphaMask;
+};
+#pragma pack(pop)
+
 
 struct game_memory
 {
