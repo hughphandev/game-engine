@@ -11,6 +11,7 @@
 #include <stdint.h>
 
 #include "win32_platform.h"
+#include "jusa_utils.h"
 
 // TODO: Global for now
 static bool g_running;
@@ -18,13 +19,9 @@ static bool g_pause;
 static bool g_audioSyncDisplay;
 static win32_offscreen_buffer g_backBuffer;
 static LPDIRECTSOUNDBUFFER g_secondaryBuffer;
-
-inline uint32_t SafeTruncateUInt64(uint64_t value)
-{
-  // TODO: Define maximum value
-  ASSERT(value < 0xFFFFFFFF);
-  return (uint32_t)value;
-}
+static HCURSOR g_Cursor;
+static bool g_IsCursorDisplay;
+static WINDOWPLACEMENT g_wpPrev = { sizeof(g_wpPrev) };
 
 inline FILETIME Win32GetLastFileTime(char* fileName)
 {
@@ -304,6 +301,14 @@ LRESULT CALLBACK MainWindowCallback(HWND window, UINT message, WPARAM wParam,
       OutputDebugStringA("WM_SIZE\n");
     }
     break;
+    case WM_SETCURSOR:
+    {
+      if (g_IsCursorDisplay)
+      {
+        SetCursor(g_Cursor);
+      }
+    }
+    break;
     case WM_DESTROY:
     {
       OutputDebugStringA("WM_DESTROY\n");
@@ -506,7 +511,35 @@ static void Win32ProcessKeyboardInput(button_state* button, bool isDown)
   button->halfTransitionCount++;
 }
 
-static void Win32ProcessPendingMessages(game_input* input, win32_state* recordState)
+static void ToggleFullScreen(HWND window, WINDOWPLACEMENT* windowPlacement)
+{
+  //Note: this method is according to Raymond Chen prescription.
+  DWORD dwStyle = GetWindowLong(window, GWL_STYLE);
+  if (dwStyle & WS_OVERLAPPEDWINDOW) {
+    MONITORINFO monitorInfo = { sizeof(monitorInfo) };
+    if (GetWindowPlacement(window, windowPlacement) &&
+        GetMonitorInfo(MonitorFromWindow(window,
+                                         MONITOR_DEFAULTTOPRIMARY), &monitorInfo)) {
+      SetWindowLong(window, GWL_STYLE,
+                    dwStyle & ~WS_OVERLAPPEDWINDOW);
+      SetWindowPos(window, HWND_TOP,
+                   monitorInfo.rcMonitor.left, monitorInfo.rcMonitor.top,
+                   monitorInfo.rcMonitor.right - monitorInfo.rcMonitor.left,
+                   monitorInfo.rcMonitor.bottom - monitorInfo.rcMonitor.top,
+                   SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+    }
+  }
+  else {
+    SetWindowLong(window, GWL_STYLE,
+                  dwStyle | WS_OVERLAPPEDWINDOW);
+    SetWindowPlacement(window, windowPlacement);
+    SetWindowPos(window, NULL, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+                 SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+  }
+}
+
+static void Win32ProcessPendingMessages(game_input* input, win32_state* win32State)
 {
   MSG msg;
   while (PeekMessage(&msg, 0, 0, 0, PM_REMOVE))
@@ -533,53 +566,49 @@ static void Win32ProcessPendingMessages(game_input* input, win32_state* recordSt
           if (msg.wParam == 'W')
           {
             Win32ProcessKeyboardInput(&input->up, isDown);
-            OutputDebugString("W\n");
           }
           if (msg.wParam == 'S')
           {
             Win32ProcessKeyboardInput(&input->down, isDown);
-            OutputDebugString("S\n");
           }
           if (msg.wParam == 'A')
           {
             Win32ProcessKeyboardInput(&input->left, isDown);
-            OutputDebugString("A\n");
           }
           if (msg.wParam == 'D')
           {
             Win32ProcessKeyboardInput(&input->right, isDown);
-            OutputDebugString("D\n");
           }
 
           if (msg.wParam == 'K' && isDown)
           {
-            if (!recordState->isRecording)
+            if (!win32State->isRecording)
             {
-              if (recordState->isPlaying)
+              if (win32State->isPlaying)
               {
-                Win32StopPlayback(input, recordState);
+                Win32StopPlayback(input, win32State);
               }
-              Win32StartRecord(recordState);
+              Win32StartRecord(win32State);
             }
             else
             {
-              Win32StopRecord(recordState);
+              Win32StopRecord(win32State);
             }
           }
 
           if (msg.wParam == 'L' && isDown)
           {
-            if (!recordState->isPlaying)
+            if (!win32State->isPlaying)
             {
-              if (recordState->isRecording)
+              if (win32State->isRecording)
               {
-                Win32StopRecord(recordState);
+                Win32StopRecord(win32State);
               }
-              Win32StartPlayback(recordState);
+              Win32StartPlayback(win32State);
             }
             else
             {
-              Win32StopPlayback(input, recordState);
+              Win32StopPlayback(input, win32State);
             }
           }
 
@@ -593,10 +622,18 @@ static void Win32ProcessPendingMessages(game_input* input, win32_state* recordSt
             g_audioSyncDisplay = !g_audioSyncDisplay;
           }
 
-          bool32 altKeyWasDown = (msg.lParam & (1 << 29));
-          if (altKeyWasDown && msg.wParam == VK_F4)
+          if (isDown)
           {
-            PostQuitMessage(0);
+            bool32 altKey = (msg.lParam & (1 << 29));
+            if (altKey && msg.wParam == VK_F4)
+            {
+              PostQuitMessage(0);
+            }
+            if (altKey && msg.wParam == VK_RETURN)
+            {
+              ToggleFullScreen(msg.hwnd, &g_wpPrev);
+            }
+
           }
         }
       }
@@ -657,7 +694,7 @@ inline float Win32GetSecondsElapsed(LARGE_INTEGER before, LARGE_INTEGER after, L
 #if INTERNAL
 void DebugDrawVerticalLine(game_offscreen_buffer* screen, int pos, int top, int bottom, uint32_t color)
 {
-  pos %= screen->width;
+  pos = (pos >= screen->width) ? pos % (screen->width) : pos;
   for (int i = top; i < bottom; ++i)
   {
     uint32_t* buffer = (uint32_t*)screen->memory;
@@ -760,6 +797,9 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
   windowClass.style = CS_HREDRAW | CS_VREDRAW;
   windowClass.lpfnWndProc = MainWindowCallback;
   windowClass.hInstance = instance;
+  // windowClass.hCursor = LoadCursor(0, IDC_ARROW);
+  g_Cursor = LoadCursor(0, IDC_ARROW);
+  g_IsCursorDisplay = true;
   // windowClass.hIcon = ;
   windowClass.lpszClassName = "MainClass";
 
@@ -868,7 +908,7 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
           }
 
           *input = {};
-          int buttonsCount = ARRAYCOUNT(input->buttons);
+          int buttonsCount = ARRAY_COUNT(input->buttons);
           for (int i = 0; i < buttonsCount; ++i)
           {
             // NOTE: reserve the button state to next frame

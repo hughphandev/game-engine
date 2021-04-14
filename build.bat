@@ -22,3 +22,6 @@ REM Platform code
 
 REM Game code
 	cl %CFLAGS% -Fo:%OBJDIR% -Fd:%BUILDDIR% %SOURCEDIR%game.cpp /link %LDFLAGS% /DLL /EXPORT:GameUpdateAndRender /EXPORT:GameOutputSound /OUT:%BUILDDIR%game.dll /PDB:%BUILDDIR%game_%DATETIME%.pdb
+
+REM Test code
+	cl %CFLAGS% /Fo:%OBJDIR% /Fd:%OBJDIR% %SOURCEDIR%test.cpp /link %LDFLAGS% %LDLIBS% /OUT:%BUILDDIR%test.exe

@@ -1,19 +1,10 @@
 #ifndef GAME_H
 #define GAME_H
 
-#include <stdint.h>
 #include <math.h>
 #include "jusa_math.h"
+#include "jusa_types.h"
 
-typedef uint64_t u64;
-typedef uint32_t u32;
-typedef uint16_t u16;
-typedef uint8_t u8;
-
-typedef int64_t i64;
-typedef int32_t i32;
-typedef int16_t i16;
-typedef int8_t i8;
 
 #if INTERNAL
 struct debug_read_file_result
@@ -37,12 +28,6 @@ DEBUG_PLATFORM_FREE_MEMORY(DEBUGPlatformFreeMemory);
 DEBUG_PLATFORM_WRITE_FILE(DEBUGPlatformWriteFile);
 #endif
 
-#if SLOW
-#define ASSERT(Expression) if(!(Expression)) {*(int *)0 = 0;}
-inline u32 SafeTruncateUInt64(u64 value);
-#else
-#define ASSERT(Expression) 
-#endif
 
 #define KILOBYTES(value) ((value) * 1024LL) 
 #define MEGABYTES(value) (KILOBYTES(value) * 1024LL) 
@@ -93,22 +78,16 @@ struct game_input
   float timeStep;
 }; // TODO: Clean up
 
-struct rec
+union rec
 {
-  union
+  struct
   {
-    struct
-    {
-      v2 pos;
-      v2 size;
-    };
-    struct
-    {
-      float x;
-      float y;
-      float width;
-      float height;
-    };
+    v2 pos;
+    v2 size;
+  };
+  struct
+  {
+    float x, y, width, height;
   };
 
   inline v2 GetMinBound();
@@ -137,10 +116,18 @@ struct img
   u32 height;
 };
 
+enum tile_type
+{
+  TILE_NONE,
+  TILE_WALKABLE,
+  TILE_WALL
+};
+
 struct tile
 {
   rec bound;
-  img *texture;
+  img* texture;
+  tile_type type;
 };
 
 struct game_world
@@ -156,14 +143,26 @@ struct game_world
   v2 tileSizeInMeter;
 };
 
+struct color
+{
+  float r, g, b, a;
 
+  u32 ToU32();
+};
+
+struct entity
+{
+  rec hitbox;
+  v2 vel;
+};
 
 struct game_state
 {
   memory_pool pool;
   game_world* world;
 
-  rec player;
+  entity player;
+  v2 playerVel;
   img background;
 };
 

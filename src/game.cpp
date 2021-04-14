@@ -1,10 +1,10 @@
 #include "game.h"
 #include "jusa_math.cpp"
+#include "jusa_intrinsics.h"
+#include "jusa_utils.h"
 
-void RenderScreen(game_offscreen_buffer* buffer, u32 color);
-void DrawRectangle(game_offscreen_buffer* buffer, u32 color, rec r, game_camera cam);
-
-#define PI 3.141592653589793f
+void ClearScreen(game_offscreen_buffer* buffer, color c);
+void DrawRectangle(game_offscreen_buffer* buffer, color c, rec r, game_camera cam);
 
 v2 rec::GetMinBound()
 {
@@ -29,40 +29,81 @@ bool IsBoxOverlapping(rec a, rec b)
   return result;
 }
 
-
-void Swap(float* l, float* r)
+u32 color::ToU32()
 {
-  float temp = *l;
-  *l = *r;
-  *r = temp;
+  ASSERT(this->r >= 0.0f);
+  ASSERT(this->g >= 0.0f);
+  ASSERT(this->b >= 0.0f);
+  ASSERT(this->a >= 0.0f);
+
+
+  u32 red = RoundToU32(this->r * 255.0f);
+  u32 green = RoundToU32(this->g * 255.0f);
+  u32 blue = RoundToU32(this->b * 255.0f);
+  u32 alpha = RoundToU32(this->a * 255.0f);
+
+  return (alpha << 24) | (red << 16) | (green << 8) | (blue << 0);
 }
 
-bool RayToRec(v2 rayOrigin, v2 rayVec, rec r, v2* contactPoint, v2* contactNormal)
+
+void DrawLine(game_offscreen_buffer* buffer, v2 from, v2 to, u32 lineColor)
+{
+  u32* pixel = (u32*)buffer->memory;
+  if (from.x == to.x)
+  {
+    int startY = (int)Round(Min(from.y, to.y));
+    int endY = (int)Round(Max(from.y, to.y));
+    int x = (int)Round(from.x);
+    int screenBound = buffer->width * buffer->height;
+    for (int i = startY; i < endY; ++i)
+    {
+      int pixelIndex = i * buffer->width + x;
+      if (pixelIndex >= 0 && pixelIndex < screenBound)
+      {
+        pixel[i * buffer->width + x] = lineColor;
+      }
+    }
+  }
+  else
+  {
+    float a = (to.y - from.y) / (to.x - from.x);
+    float b = from.y - (a * from.x);
+    int startX = (int)Round(Min(from.x, to.x));
+    int endX = (int)Round(Max(from.x, to.x));
+    for (int i = startX; i < endX; ++i)
+    {
+      int y = (int)Round(a * (float)i + b);
+      if (i >= 0 && i < buffer->width && y >= 0 && y < buffer->height)
+      {
+        pixel[y * buffer->width + i] = lineColor;
+      }
+    }
+  }
+}
+
+bool RayToRec(v2 rayOrigin, v2 rayVec, rec r, v2* contactPoint, v2* contactNormal, float* tHit)
 {
   if (rayVec == 0.0f) return false;
-
   v2 minPos = r.GetMinBound();
   v2 maxPos = r.GetMaxBound();
 
   v2 tNear = (minPos - rayOrigin) / rayVec;
   v2 tFar = (maxPos - rayOrigin) / rayVec;
 
+  //Note: check if value is a floating point number!
+  if (tFar != tFar || tNear != tNear) return false;
+
   if (tNear.x > tFar.x) Swap(&tNear.x, &tFar.x);
   if (tNear.y > tFar.y) Swap(&tNear.y, &tFar.y);
 
-  if (tNear.x > tFar.y || tNear.y > tFar.x) return false;
+  if (tNear.x >= tFar.y || tNear.y >= tFar.x) return false;
 
-  float tHitNear = Max(tNear.x, tNear.y);
+  *tHit = Max(tNear.x, tNear.y);
   float tHitFar = Min(tFar.x, tFar.y);
 
-  //Note: check if value is a floating point number!
-  if (tHitNear != tHitNear) return false;
+  if (tHitFar <= 0 || (*tHit) >= 1.0f) return false;
 
-  if (tHitFar < 0.0f) return false;
-  if (tHitNear > 1.0f || tHitNear < 0.0f) return false;
-
-  contactPoint->x = rayOrigin.x + (tHitNear * rayVec.x);
-  contactPoint->y = rayOrigin.y + (tHitNear * rayVec.y);
+  *contactPoint = rayOrigin + (rayVec * (*tHit));
 
   if (tNear.x > tNear.y)
   {
@@ -90,63 +131,61 @@ bool RayToRec(v2 rayOrigin, v2 rayVec, rec r, v2* contactPoint, v2* contactNorma
   return true;
 }
 
-void DrawLine(game_offscreen_buffer* buffer, v2 from, v2 to, u32 lineColor)
+void MoveAndSlide(entity* entity, v2 motion, game_world* world, float timeStep)
 {
-  u32* pixel = (u32*)buffer->memory;
-  if (from.x == to.x)
+  //TODO: solution for world boundary
+  rec* hitbox = &entity->hitbox;
+  v2 dp = {};
+  v2 moveBefore = {};
+  v2 pos = hitbox->pos;
+
+  do
   {
-    int startY = RoundToInt(Min(from.y, to.y));
-    int endY = RoundToInt(Max(from.y, to.y));
-    int x = RoundToInt(from.x);
-    int screenBound = buffer->width * buffer->height;
-    for (int i = startY; i < endY; ++i)
+    float tMin = 1.0f;
+    v2 minContactNormal = {};
+
+    for (u32 y = 0; y < world->tileCountY; ++y)
     {
-      int pixelIndex = i * buffer->width + x;
-      if (pixelIndex >= 0 && pixelIndex < screenBound)
+      for (u32 x = 0; x < world->tileCountX; ++x)
       {
-        pixel[i * buffer->width + x] = lineColor;
+        u32 tileIndex = y * world->tileCountX + x;
+        rec imRec = { world->tileMap[tileIndex].bound.pos, world->tileMap[tileIndex].bound.size + hitbox->size };
+
+        v2 contactNormal = {};
+        v2 contactPoint = {};
+
+        if (world->tileMap[tileIndex].type == TILE_WALL)
+        {
+          // resolve collision
+          float tHit = 0.0f;
+          if (RayToRec(pos, motion * timeStep, imRec, &contactPoint, &contactNormal, &tHit))
+          {
+
+            //Note: only true with aabb
+            //TODO: solution for generic case if needed
+            if ((tMin) > (tHit))
+            {
+              tMin = tHit;
+              minContactNormal = contactNormal;
+            }
+          }
+        }
       }
     }
-  }
-  else
-  {
-    float a = (to.y - from.y) / (to.x - from.x);
-    float b = from.y - (a * from.x);
-    int startX = RoundToInt(Min(from.x, to.x));
-    int endX = RoundToInt(Max(from.x, to.x));
-    for (int i = startX; i < endX; ++i)
-    {
-      int y = RoundToInt(a * (float)i + b);
-      if (i >= 0 && i < buffer->width && y >= 0 && y < buffer->height)
-      {
-        pixel[y * buffer->width + i] = lineColor;
-      }
-    }
-  }
-}
+    ASSERT(tMin >= 0.0f);
+    v2 moveLeft = motion * (1.0f - tMin);
+    moveBefore = motion * tMin;
+    motion = (moveLeft - minContactNormal * Inner(minContactNormal, moveLeft));
 
+    dp += moveBefore * timeStep;
+    entity->vel = moveBefore;
 
-void MoveAndSlide(rec* target, v2 moveVec, game_world* world)
-{
-  for (u32 i = 0; i < world->objCount; ++i)
-  {
-    rec imRec = { world->obj[i].pos, world->obj[i].size + target->size };
+    pos += moveBefore * timeStep;
+  } while (motion != 0.0f);
 
-    v2 contactNormal = {};
-    v2 contactPoint = {};
+  hitbox->pos += dp;
 
-    if (RayToRec(target->pos, moveVec, imRec, &contactPoint, &contactNormal))
-    {
-      //Note: only true with aabb
-      //TODO: solution for generic case if needed
-      v2 newMoveVec = {};
-      newMoveVec.x = (contactNormal.x != 0.0f) ? 0 : moveVec.x;
-      newMoveVec.y = (contactNormal.y != 0.0f) ? 0 : moveVec.y;
-      target->pos = contactPoint + newMoveVec;
-      return;
-    }
-  }
-  target->pos = target->pos + moveVec;
+  entity->vel += motion * timeStep;
 }
 
 #define PUSH_ARRAY(pool, type, count) (type*)PushSize_(pool, (sizeof(type) * count))
@@ -169,23 +208,25 @@ static void InitializeMemoryPool(memory_pool* pool, size_t size, void* base)
 
 inline rec GetTileBound(game_world* world, u32 x, u32 y)
 {
+  //NOTE: x, y start at top left corner!
   rec result = {};
 
   result.size = world->tileSizeInMeter;
 
-
   v2 halfTileMapSizeInMeter = (world->tileSizeInMeter * V2((float)world->tileCountX, (float)world->tileCountY)) / 2.0f;
 
-  result.pos = V2((result.height * (float)x), (result.width * (float)y)) - halfTileMapSizeInMeter;
+  v2 tilePos = { (float)x, (float)(world->tileCountY - y - 1) };
+
+  result.pos = (tilePos * world->tileSizeInMeter) - halfTileMapSizeInMeter;
 
   return result;
 }
 
-inline img DEBUGLoadBMP(game_memory* mem, game_state* gameState)
+inline img DEBUGLoadBMP(game_memory* mem, game_state* gameState, char* fileName)
 {
-  img result;
+  img result = {};
 
-  debug_read_file_result file = mem->DEBUGPlatformReadFile("build/test.bmp");
+  debug_read_file_result file = mem->DEBUGPlatformReadFile(fileName);
   if (file.contentSize > 0)
   {
     bmp_header* header = (bmp_header*)file.contents;
@@ -194,51 +235,72 @@ inline img DEBUGLoadBMP(game_memory* mem, game_state* gameState)
     result.pixel = PUSH_ARRAY(&gameState->pool, u32, header->width * header->height);
     result.width = header->width;
     result.height = header->height;
+
+    bit_scan_result redScan = FindLowestSetBit(header->redMask);
+    bit_scan_result greenScan = FindLowestSetBit(header->greenMask);
+    bit_scan_result blueScan = FindLowestSetBit(header->blueMask);
+    bit_scan_result alphaScan = FindLowestSetBit(header->alphaMask);
+
+    ASSERT(redScan.found);
+    ASSERT(blueScan.found);
+    ASSERT(greenScan.found);
+
+    i32 alphaRotate = 24 - (i32)alphaScan.index;
+    i32 redRotate = 16 - (i32)redScan.index;
+    i32 greenRotate = 8 - (i32)greenScan.index;
+    i32 blueRotate = 0 - (i32)blueScan.index;
+
     for (u32 y = 0; y < header->height; ++y)
     {
       for (u32 x = 0; x < header->width; ++x)
       {
         u32 indexMem = y * header->width + x;
         u32 index = (header->height - y - 1) * header->width + x;
-        u32 red = filePixel[index] & header->redMask;
-        u32 green = filePixel[index] & header->greenMask;
-        u32 blue = filePixel[index] & header->blueMask;
-        u32 alpha = filePixel[index] & header->alphaMask;
 
-        while ((red >> 8) != 0)
-        {
-          red = (red >> 8);
-        }
-        while ((blue >> 8) != 0)
-        {
-          blue = (blue >> 8);
-        }
-        while ((green >> 8) != 0)
-        {
-          green = (green >> 8);
-        }
-        while ((alpha >> 8) != 0)
-        {
-          alpha = (alpha >> 8);
-        }
+        u32 red = RotateLeft((filePixel[index] & header->redMask), redRotate);
+        u32 green = RotateLeft((filePixel[index] & header->greenMask), greenRotate);
+        u32 blue = RotateLeft((filePixel[index] & header->blueMask), blueRotate);
 
-        result.pixel[indexMem] = ((alpha << 24) | (red << 16) | (green << 8) | (blue));
+        u32 alpha = (alphaScan.found) ? RotateLeft((filePixel[index] & header->alphaMask), alphaRotate) : 0xFF000000;
+        result.pixel[indexMem] = (alpha | red | green | blue);
       }
     }
   }
   return result;
 }
 
-static void DEBUGDrawBMP(game_offscreen_buffer* buffer, u32* bmpPixel, u32 width, u32 height)
+inline u32 LinearBlend(u32 source, u32 dest)
+{
+  //NOTE: alpha blending!
+  float t = (float)(dest >> 24) / 255.0f;
+
+  u32 dR = ((dest >> 16) & 0xFF);
+  u32 dG = ((dest >> 8) & 0xFF);
+  u32 dB = ((dest >> 0) & 0xFF);
+
+  u32 sR = ((source >> 16) & 0xFF);
+  u32 sG = ((source >> 8) & 0xFF);
+  u32 sB = ((source >> 0) & 0xFF);
+
+  return ((u32)((i32)((float)(dR - sR) * t) + sR) << 16) |
+    ((u32)((i32)((float)(dG - sG) * t) + sG) << 8) |
+    ((u32)((i32)((float)(dB - sB) * t) + sB) << 0);
+
+}
+
+static void DrawImage(game_offscreen_buffer* buffer, img* image)
 {
   u32* pixel = (u32*)buffer->memory;
-  width = (width < (u32)buffer->width) ? width : (u32)buffer->width;
-  height = (height < (u32)buffer->height) ? height : (u32)buffer->height;
+  u32 width = (image->width < (u32)buffer->width) ? image->width : (u32)buffer->width;
+  u32 height = (image->height < (u32)buffer->height) ? image->height : (u32)buffer->height;
   for (u32 y = 0; y < height; ++y)
   {
     for (u32 x = 0; x < width; ++x)
     {
-      pixel[y * buffer->width + x] = bmpPixel[y * width + x];
+      //NOTE: bitmap flipping;
+      u32 sIndex = y * buffer->width + x;
+      u32 dIndex = y * width + x;
+      pixel[sIndex] = LinearBlend(pixel[sIndex], image->pixel[dIndex]);
     }
   }
 }
@@ -252,20 +314,24 @@ inline v2 WorldPointToScreen(game_camera cam, v2 point)
 
 inline void DrawTile(game_offscreen_buffer* buffer, tile tile, game_camera cam)
 {
+  if (tile.texture == NULL)
+  {
+    return;
+  }
   v2 minBound = WorldPointToScreen(cam, tile.bound.GetMinBound());
   v2 maxBound = WorldPointToScreen(cam, tile.bound.GetMaxBound());
 
-  int xMin = RoundToInt(minBound.x);
-  int yMin = RoundToInt(maxBound.y);
-  int xMax = RoundToInt(maxBound.x);
-  int yMax = RoundToInt(minBound.y);
+  int xMin = (int)Round(minBound.x);
+  int yMin = (int)Round(maxBound.y);
+  int xMax = (int)Round(maxBound.x);
+  int yMax = (int)Round(minBound.y);
 
   ASSERT(xMax >= xMin);
   ASSERT(yMax >= yMin);
 
   u32* pixel = tile.texture->pixel;
 
-  u32* mem = (u32*)buffer->memory;
+  u32* scrPixel = (u32*)buffer->memory;
   for (int y = yMin; y < yMax; y++)
   {
     for (int x = xMin; x < xMax; x++)
@@ -276,7 +342,9 @@ inline void DrawTile(game_offscreen_buffer* buffer, tile tile, game_camera cam)
         //TODO: fix pixel scaling
         u32 pX = (u32)(((float)(x - xMin) / (float)(xMax - xMin)) * tile.texture->width);
         u32 pY = (u32)(((float)(y - yMin) / (float)(yMax - yMin)) * tile.texture->height);
-        mem[y * buffer->width + x] = pixel[pY * tile.texture->width + pX];
+
+        u32 scrIndex = y * buffer->width + x;
+        scrPixel[scrIndex] = LinearBlend(scrPixel[scrIndex], pixel[pY * tile.texture->width + pX]);
       }
     }
   }
@@ -289,24 +357,47 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   {
     InitializeMemoryPool(&gameState->pool, gameMemory->permanentStorageSize - sizeof(game_state), (u8*)gameMemory->permanentStorage + sizeof(game_state));
 
-    gameState->background = DEBUGLoadBMP(gameMemory, gameState);
+    gameState->background = DEBUGLoadBMP(gameMemory, gameState, "test.bmp");
     gameState->world = PUSH_TYPE(&gameState->pool, game_world);
     game_world* world = gameState->world;
     world->cam = PUSH_TYPE(&gameState->pool, game_camera);
     world->cam->pixelPerMeter = buffer->height / 9.0f;
     world->cam->offSet = { buffer->width / 2.0f, buffer->height / 2.0f };
 
-    world->tileCountX = 10;
-    world->tileCountY = 10;
+    img map = DEBUGLoadBMP(gameMemory, gameState, "map.bmp");
+
+    world->tileCountX = map.width;
+    world->tileCountY = map.height;
     world->tileSizeInMeter = { 1.0f, 1.0f };
     world->tileMap = PUSH_ARRAY(&gameState->pool, tile, world->tileCountX * world->tileCountY);
 
-    for (u32 i = 0; i < world->tileCountX; ++i)
+    for (u32 y = 0; y < world->tileCountY; ++y)
     {
-      for (u32 j = 0; j < world->tileCountY; ++j)
+      for (u32 x = 0; x < world->tileCountX; ++x)
       {
-        world->tileMap[i * world->tileCountY + j].bound = GetTileBound(world, i, j);
-        world->tileMap[i * world->tileCountY + j].texture = &gameState->background;
+        u32 mapIndex = y * world->tileCountX + x;
+        world->tileMap[mapIndex].bound = GetTileBound(world, x, y);
+        switch (map.pixel[mapIndex])
+        {
+          case 0xFF000000:
+          {
+            world->tileMap[mapIndex].type = TILE_WALL;
+            world->tileMap[mapIndex].texture = &gameState->background;
+          }
+          break;
+          case 0xFFFFFFFF:
+          {
+            world->tileMap[mapIndex].type = TILE_WALKABLE;
+            world->tileMap[mapIndex].texture = NULL;
+          }
+          break;
+
+          default:
+          {
+            world->tileMap[mapIndex].type = TILE_NONE;
+          }
+          break;
+        }
       }
     }
 
@@ -320,7 +411,9 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       world->obj[i].height = 1;
     }
 
-
+    rec* playerHitbox = &gameState->player.hitbox;
+    playerHitbox->width = 0.5f;
+    playerHitbox->height = 0.5f;
 
     gameMemory->initialized = true;
   }
@@ -328,12 +421,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   game_world* world = gameState->world;
   game_camera* cam = world->cam;
 
-
-  float velocity = 5.0f;
-
-  rec* player = &gameState->player;
-  player->width = 0.5f;
-  player->height = 1.5f;
+  entity* player = &gameState->player;
 
   v2 dir = { };
   if (input.right.isDown)
@@ -353,28 +441,42 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     dir.x -= 1.0f;
   }
 
+  // float m = 1.0f;
+  // float muy = 0.5f;
+  // float g = 9.8f;
 
-  MoveAndSlide(player, dir.Normalize() * velocity * input.timeStep, world);
-  cam->pos = player->pos;
+  v2 playerAccel = dir.Normalize() * 20.0f;
 
-  RenderScreen(buffer, 0);
-  DEBUGDrawBMP(buffer, gameState->background.pixel, gameState->background.width, gameState->background.height);
+  //TODO: reset accelatation when hit wall
+  playerAccel -= 4.0f * player->vel;
+  v2 motion = (0.5f * playerAccel * input.timeStep) + (player->vel);
+
+  MoveAndSlide(player, motion, world, input.timeStep);
+
+  player->vel += playerAccel * input.timeStep;
+
+  cam->pos = player->hitbox.pos;
+
+  ClearScreen(buffer, { 0.0f, 0.0f, 0.0f, 0.0f });
 
   u32 gray = 0x757D75;
-  for (u32 i = 0; i < world->tileCountX; ++i)
+  for (u32 y = 0; y < world->tileCountY; ++y)
   {
-    for (u32 j = 0; j < world->tileCountY; ++j)
+    for (u32 x = 0; x < world->tileCountX; ++x)
     {
-      DrawTile(buffer, world->tileMap[i * world->tileCountY + j], *cam);
+      u32 index = y * world->tileCountX + x;
+      if (world->tileMap[index].texture == NULL)
+      {
+        DrawRectangle(buffer, { 0.0f, 0.0f, 0.0f, 1.0f }, world->tileMap[index].bound, *cam);
+      }
+      else
+      {
+        DrawTile(buffer, world->tileMap[index], *cam);
+      }
     }
   }
 
-  u32 recColor = 0x00FFFF;
-  for (u32 i = 0; i < world->objCount; ++i)
-  {
-    DrawRectangle(buffer, recColor, world->obj[i], *cam);
-  }
-  DrawRectangle(buffer, 0xFFFFFF, *player, *cam);
+  DrawRectangle(buffer, { 1.0f, 1.0f, 1.0f, 1.0f }, player->hitbox, *cam);
 }
 
 extern "C" GAME_OUTPUT_SOUND(GameOutputSound)
@@ -382,32 +484,34 @@ extern "C" GAME_OUTPUT_SOUND(GameOutputSound)
   game_state* gameState = (game_state*)gameMemory->permanentStorage;
 }
 
-void RenderScreen(game_offscreen_buffer* buffer, u32 color)
+void ClearScreen(game_offscreen_buffer* buffer, color c)
 {
   u8* row = (u8*)buffer->memory;
+  u32 col = c.ToU32();
   for (int y = 0; y < buffer->height; ++y)
   {
     u32* pixel = (u32*)row;
     for (int x = 0; x < buffer->width; ++x)
     {
-      *pixel++ = color;
+      *pixel++ = col;
     }
     row += buffer->pitch;
   }
 }
 
 
-void DrawRectangle(game_offscreen_buffer* buffer, u32 color, rec r, game_camera cam)
+void DrawRectangle(game_offscreen_buffer* buffer, color c, rec r, game_camera cam)
 {
   v2 minBound = WorldPointToScreen(cam, r.GetMinBound());
   v2 maxBound = WorldPointToScreen(cam, r.GetMaxBound());
 
-  int xMin = RoundToInt(minBound.x);
-  int yMin = RoundToInt(maxBound.y);
-  int xMax = RoundToInt(maxBound.x);
-  int yMax = RoundToInt(minBound.y);
+  int xMin = (int)Round(minBound.x);
+  int yMin = (int)Round(maxBound.y);
+  int xMax = (int)Round(maxBound.x);
+  int yMax = (int)Round(minBound.y);
 
   u32* mem = (u32*)buffer->memory;
+  u32 col = c.ToU32();
   for (int x = xMin; x < xMax; x++)
   {
     for (int y = yMin; y < yMax; y++)
@@ -415,7 +519,7 @@ void DrawRectangle(game_offscreen_buffer* buffer, u32 color, rec r, game_camera 
       if (x >= 0 && x < buffer->width &&
           y >= 0 && y < buffer->height)
       {
-        mem[y * buffer->width + x] = color;
+        mem[y * buffer->width + x] = col;
       }
     }
   }

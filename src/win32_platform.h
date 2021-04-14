@@ -23,9 +23,6 @@ static x_input_get_state* XInputGetState_ = XInputGetStateStub;
 #define XInputGetState XInputGetState_
 #define XInputSetState XInputSetState_
 
-#define ARRAYCOUNT(array) (sizeof(array) / sizeof((array)[0]))
-
-
 struct win32_window_dimension
 {
 	int width;
