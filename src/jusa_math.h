@@ -52,6 +52,7 @@ union v2
   inline bool operator>(float a);
 };
 
+inline v2 Round(v2 value);
 inline float Inner(v2 a, v2 b);
 inline v2 V2(float x, float y);
 inline v2 operator*(v2 a, v2 b);

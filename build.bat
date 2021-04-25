@@ -9,6 +9,7 @@ set OPTIMIZE=/0i /02 /fp:fast
 
 set PROJDIR=%CD%\
 set SOURCEDIR=%PROJDIR%src\
+set TESTDIR=%PROJDIR%test\
 set BUILDDIR=%PROJDIR%build\
 set OBJDIR=%BUILDDIR%obj\
 
@@ -24,4 +25,4 @@ REM Game code
 	cl %CFLAGS% -Fo:%OBJDIR% -Fd:%BUILDDIR% %SOURCEDIR%game.cpp /link %LDFLAGS% /DLL /EXPORT:GameUpdateAndRender /EXPORT:GameOutputSound /OUT:%BUILDDIR%game.dll /PDB:%BUILDDIR%game_%DATETIME%.pdb
 
 REM Test code
-	cl %CFLAGS% /Fo:%OBJDIR% /Fd:%OBJDIR% %SOURCEDIR%test.cpp /link %LDFLAGS% %LDLIBS% /OUT:%BUILDDIR%test.exe
+	cl %CFLAGS% /I%SOURCEDIR% /Fo:%OBJDIR% /Fd:%OBJDIR% %TESTDIR%test.cpp /link %LDFLAGS% %LDLIBS% /OUT:%BUILDDIR%test.exe

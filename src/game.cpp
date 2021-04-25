@@ -2,22 +2,26 @@
 #include "jusa_math.cpp"
 #include "jusa_intrinsics.h"
 #include "jusa_utils.h"
+#include "jusa_render.h"
 
 void ClearScreen(game_offscreen_buffer* buffer, color c);
 void DrawRectangle(game_offscreen_buffer* buffer, color c, rec r, game_camera cam);
 
 v2 rec::GetMinBound()
 {
+  //TODO: Test
   return { this->pos.x - (this->width / 2.0f), this->pos.y - (this->height / 2.0f) };
 }
 
 v2 rec::GetMaxBound()
 {
+  //TODO: Test
   return { this->pos.x + (this->width / 2.0f), this->pos.y + (this->height / 2.0f) };
 }
 
 bool IsBoxOverlapping(rec a, rec b)
 {
+  //TODO: Test
   bool result = false;
   v2 aMin = a.GetMinBound();
   v2 aMax = a.GetMaxBound();
@@ -28,23 +32,6 @@ bool IsBoxOverlapping(rec a, rec b)
 
   return result;
 }
-
-u32 color::ToU32()
-{
-  ASSERT(this->r >= 0.0f);
-  ASSERT(this->g >= 0.0f);
-  ASSERT(this->b >= 0.0f);
-  ASSERT(this->a >= 0.0f);
-
-
-  u32 red = RoundToU32(this->r * 255.0f);
-  u32 green = RoundToU32(this->g * 255.0f);
-  u32 blue = RoundToU32(this->b * 255.0f);
-  u32 alpha = RoundToU32(this->a * 255.0f);
-
-  return (alpha << 24) | (red << 16) | (green << 8) | (blue << 0);
-}
-
 
 void DrawLine(game_offscreen_buffer* buffer, v2 from, v2 to, u32 lineColor)
 {
@@ -181,7 +168,7 @@ void MoveAndSlide(entity* entity, v2 motion, game_world* world, float timeStep)
     entity->vel = moveBefore;
 
     pos += moveBefore * timeStep;
-  } while (motion != 0.0f);
+  } while (Abs(motion) > 0.0001f);
 
   hitbox->pos += dp;
 
@@ -209,17 +196,30 @@ static void InitializeMemoryPool(memory_pool* pool, size_t size, void* base)
 inline rec GetTileBound(game_world* world, u32 x, u32 y)
 {
   //NOTE: x, y start at top left corner!
+  //TODO: Test
   rec result = {};
 
   result.size = world->tileSizeInMeter;
 
-  v2 halfTileMapSizeInMeter = (world->tileSizeInMeter * V2((float)world->tileCountX, (float)world->tileCountY)) / 2.0f;
+  v2 halfTileMapSizeInMeter = V2((float)world->tileCountX, (float)world->tileCountY) / 2.0f;
 
   v2 tilePos = { (float)x, (float)(world->tileCountY - y - 1) };
 
-  result.pos = (tilePos * world->tileSizeInMeter) - halfTileMapSizeInMeter;
+  result.pos = (tilePos - halfTileMapSizeInMeter) * world->tileSizeInMeter;
 
   return result;
+}
+
+inline v2 GetTileIndex(game_world* world, float x, float y)
+{
+  //TODO: Test
+  v2 halfTileCount = Round(0.5f * V2((float)world->tileCountX, (float)world->tileCountY));
+  return Round(V2(x, -y - 1) / world->tileSizeInMeter) + halfTileCount;
+}
+
+inline v2 GetTileIndex(game_world* world, v2 pos)
+{
+  return GetTileIndex(world, pos.x, pos.y);
 }
 
 inline img DEBUGLoadBMP(game_memory* mem, game_state* gameState, char* fileName)
@@ -269,25 +269,6 @@ inline img DEBUGLoadBMP(game_memory* mem, game_state* gameState, char* fileName)
   return result;
 }
 
-inline u32 LinearBlend(u32 source, u32 dest)
-{
-  //NOTE: alpha blending!
-  float t = (float)(dest >> 24) / 255.0f;
-
-  u32 dR = ((dest >> 16) & 0xFF);
-  u32 dG = ((dest >> 8) & 0xFF);
-  u32 dB = ((dest >> 0) & 0xFF);
-
-  u32 sR = ((source >> 16) & 0xFF);
-  u32 sG = ((source >> 8) & 0xFF);
-  u32 sB = ((source >> 0) & 0xFF);
-
-  return ((u32)((i32)((float)(dR - sR) * t) + sR) << 16) |
-    ((u32)((i32)((float)(dG - sG) * t) + sG) << 8) |
-    ((u32)((i32)((float)(dB - sB) * t) + sB) << 0);
-
-}
-
 static void DrawImage(game_offscreen_buffer* buffer, img* image)
 {
   u32* pixel = (u32*)buffer->memory;
@@ -307,9 +288,19 @@ static void DrawImage(game_offscreen_buffer* buffer, img* image)
 
 inline v2 WorldPointToScreen(game_camera cam, v2 point)
 {
+  //TODO: Test
   v2 relPos = point - cam.pos;
   v2 screenCoord = { relPos.x * (float)cam.pixelPerMeter, -relPos.y * (float)cam.pixelPerMeter };
   return screenCoord + cam.offSet;
+}
+
+inline v2 ScreenPointToWorld(game_camera cam, v2 point, v2 displayOffset)
+{
+  //TODO: Test
+  //TODO: fix offset of the pointer to the top-left of the window or change mouseX, mouseY relative to the top-left of the window
+  v2 relPos = point - cam.offSet - displayOffset;
+  v2 worldCoord = { relPos.x / (float)cam.pixelPerMeter, -relPos.y / (float)cam.pixelPerMeter };
+  return worldCoord + cam.pos;
 }
 
 inline void DrawTile(game_offscreen_buffer* buffer, tile tile, game_camera cam)
@@ -357,13 +348,14 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   {
     InitializeMemoryPool(&gameState->pool, gameMemory->permanentStorageSize - sizeof(game_state), (u8*)gameMemory->permanentStorage + sizeof(game_state));
 
-    gameState->background = DEBUGLoadBMP(gameMemory, gameState, "test.bmp");
+
     gameState->world = PUSH_TYPE(&gameState->pool, game_world);
     game_world* world = gameState->world;
     world->cam = PUSH_TYPE(&gameState->pool, game_camera);
     world->cam->pixelPerMeter = buffer->height / 9.0f;
     world->cam->offSet = { buffer->width / 2.0f, buffer->height / 2.0f };
 
+    gameState->background = DEBUGLoadBMP(gameMemory, gameState, "test.bmp");
     img map = DEBUGLoadBMP(gameMemory, gameState, "map.bmp");
 
     world->tileCountX = map.width;
@@ -476,7 +468,15 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     }
   }
 
+  v2 playerTile = GetTileIndex(world, player->hitbox.pos);
+  u32 tileIndex = (u32)playerTile.y * world->tileCountX + (u32)playerTile.x;
+  DrawRectangle(buffer, { 1.0f, 0.0f, 1.0f, 1.0f }, world->tileMap[tileIndex].bound, *cam);
+  DrawRectangle(buffer, { 1.0f, 1.0f, 0.0f, 1.0f }, GetTileBound(world, 0, 1), *cam);
   DrawRectangle(buffer, { 1.0f, 1.0f, 1.0f, 1.0f }, player->hitbox, *cam);
+
+  rec pointerRec = { 0.0f, 0.0f, 0.1f, 0.1f };
+  pointerRec.pos = ScreenPointToWorld(*cam, { (float)input.mouseX, (float)input.mouseY }, buffer->offSet);
+  DrawRectangle(buffer, { 1.0f, 1.0f, 1.0f, 1.0f }, pointerRec, *cam);
 }
 
 extern "C" GAME_OUTPUT_SOUND(GameOutputSound)
@@ -486,16 +486,14 @@ extern "C" GAME_OUTPUT_SOUND(GameOutputSound)
 
 void ClearScreen(game_offscreen_buffer* buffer, color c)
 {
-  u8* row = (u8*)buffer->memory;
+  u32* pixel = (u32*)buffer->memory;
   u32 col = c.ToU32();
   for (int y = 0; y < buffer->height; ++y)
   {
-    u32* pixel = (u32*)row;
     for (int x = 0; x < buffer->width; ++x)
     {
       *pixel++ = col;
     }
-    row += buffer->pitch;
   }
 }
 

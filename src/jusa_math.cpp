@@ -74,6 +74,11 @@ inline float Abs(float value)
   return value;
 }
 
+inline v2 Round(v2 value)
+{
+  return { Round(value.x), Round(value.y) };
+}
+
 enum solution_type
 {
   NONE, ONE, INFINITE
@@ -88,10 +93,10 @@ struct gauss_j_result
   bool operator==(gauss_j_result v)
   {
     bool result = (this->type == v.type && this->order == v.order);
-    
-    for(u32 i = 0; i < order && result; ++i)
+
+    for (u32 i = 0; i < order && result; ++i)
     {
-      result = (this->value[i] == v.value[i]);
+      if (Abs(this->value[i] - v.value[i]) > 0.00001f) result = false;
     }
     return result;
   }
@@ -100,8 +105,9 @@ struct gauss_j_result
 gauss_j_result Gauss_J(float* a, i32 height, i32 width)
 {
   // init
+  ASSERT(height == (width - 1));
   gauss_j_result result = {};
-  result.order = height;
+  result.order = width - 1;
   result.value = (float*)malloc(result.order * sizeof(float));
   for (u32 i = 0; i < result.order; ++i)
   {
@@ -136,19 +142,22 @@ gauss_j_result Gauss_J(float* a, i32 height, i32 width)
   //NOTE: every rows reform with every other rows!
   for (i32 i = 0; i < height; i++)
   {
-    for (i32 j = 0; j < height; j++) {
+    for (i32 j = 0; j < (width - 1); j++) {
       if (i != j) {
 
         float pro = m[j * width + i] / m[i * width + i];
 
-        for (i32 k = 0; k < width; k++)
-          m[j * width + k] = m[j * width + k] - m[i * width + k] * pro;
+        if (!isnan(pro))
+        {
+          for (i32 k = 0; k < width; k++)
+            m[j * width + k] = m[j * width + k] - m[i * width + k] * pro;
+        }
       }
     }
   }
 
   // post-check and get result value
-  for (i32 i = 0; i < height; ++i)
+  for (i32 i = 0; i < (i32)result.order; ++i)
   {
     i32 rIndex = i * width + width - 1;
     i32 lIndex = i * width + i;

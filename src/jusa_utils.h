@@ -1,7 +1,14 @@
 #ifndef JUSA_UTILS_H
 #define JUSA_UTILS_H
 
+#include "jusa_types.h"
+
 #define ARRAY_COUNT(array) (sizeof(array) / sizeof((array)[0]))
+
+#define KILOBYTES(value) ((value) * 1024LL) 
+#define MEGABYTES(value) (KILOBYTES(value) * 1024LL) 
+#define GIGABYTES(value) (MEGABYTES(value) * 1024LL) 
+#define TERABYTES(value) (GIGABYTES(value) * 1024LL) 
 
 #if SLOW
 #define ASSERT(Expression) if(!(Expression)) {*(int *)0 = 0;}
@@ -30,5 +37,12 @@ void Swap(i32* l, i32* r)
   *l = *r;
   *r = temp;
 }
+
+inline float Lerp(float a, float b, float t)
+{
+  float delta = b - a;
+  return a + (delta * t);
+}
+
 
 #endif

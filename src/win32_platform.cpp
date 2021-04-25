@@ -200,18 +200,18 @@ static void Win32ResizeDIBSection(win32_offscreen_buffer* buffer, int width,
   buffer->memory = VirtualAlloc(0, bitmapMemorySize, MEM_RESERVE | MEM_COMMIT,
                                 PAGE_READWRITE);
 
-  buffer->pitch = buffer->width * bytePerPixel;
 }
 
 static void Win32BufferToWindow(HDC deviceContext, win32_offscreen_buffer* buffer, int windowWidth, int windowHeight)
 {
   //Note: not stretching for debug purpose!
   //TODO: switch to aspect ratio in the future!
-  int offSetX = (windowWidth - buffer->width) / 2;
-  int offSetY = (windowHeight - buffer->height) / 2;
   PatBlt(deviceContext, 0, 0, windowWidth, windowHeight, WHITENESS);
 
-  StretchDIBits(deviceContext, offSetX, offSetY, buffer->width, buffer->height, 0, 0, buffer->width, buffer->height, buffer->memory, &buffer->info, DIB_RGB_COLORS, SRCCOPY);
+  buffer->offSet.x = 0.5f * (float)(windowWidth - buffer->width);
+  buffer->offSet.y = 0.5f * (float)(windowHeight - buffer->height);
+
+  StretchDIBits(deviceContext, (int)buffer->offSet.x, (int)buffer->offSet.y, buffer->width, buffer->height, 0, 0, buffer->width, buffer->height, buffer->memory, &buffer->info, DIB_RGB_COLORS, SRCCOPY);
 }
 
 void Win32InitDSound(HWND window, int32_t samplesPerSecond, int32_t bufferSize)
@@ -946,7 +946,7 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
             buffer.memory = g_backBuffer.memory;
             buffer.width = g_backBuffer.width;
             buffer.height = g_backBuffer.height;
-            buffer.pitch = g_backBuffer.pitch;
+            buffer.offSet = g_backBuffer.offSet;
 
             game.UpdateAndRender(&gameMemory, &buffer, *input);
 

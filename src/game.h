@@ -1,10 +1,8 @@
 #ifndef GAME_H
 #define GAME_H
 
-#include <math.h>
 #include "jusa_math.h"
 #include "jusa_types.h"
-
 
 #if INTERNAL
 struct debug_read_file_result
@@ -28,18 +26,14 @@ DEBUG_PLATFORM_FREE_MEMORY(DEBUGPlatformFreeMemory);
 DEBUG_PLATFORM_WRITE_FILE(DEBUGPlatformWriteFile);
 #endif
 
-
-#define KILOBYTES(value) ((value) * 1024LL) 
-#define MEGABYTES(value) (KILOBYTES(value) * 1024LL) 
-#define GIGABYTES(value) (MEGABYTES(value) * 1024LL) 
-#define TERABYTES(value) (GIGABYTES(value) * 1024LL) 
-
 struct game_offscreen_buffer
 {
   void* memory;
   int width;
   int height;
-  int pitch;
+
+  // relative to window
+  v2 offSet;
 };
 
 struct game_sound_output
@@ -141,13 +135,6 @@ struct game_world
   u32 tileCountX;
   u32 tileCountY;
   v2 tileSizeInMeter;
-};
-
-struct color
-{
-  float r, g, b, a;
-
-  u32 ToU32();
 };
 
 struct entity

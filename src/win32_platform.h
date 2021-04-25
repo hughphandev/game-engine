@@ -35,7 +35,9 @@ struct win32_offscreen_buffer
 	void* memory;
 	int width;
 	int height;
-	int pitch;
+
+	// relative to window
+	v2 offSet;
 };
 
 // NOTE: considering adding bytesPerSample to simplify calculation;
@@ -75,7 +77,7 @@ struct debug_audio_marker
 
 struct win32_state
 {
-	char *fileFullPath;
+	char* fileFullPath;
 
 	size_t recordIndex;
 	HANDLE playHandle;
