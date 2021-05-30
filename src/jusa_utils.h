@@ -38,10 +38,11 @@ void Swap(i32* l, i32* r)
   *r = temp;
 }
 
-inline float Lerp(float a, float b, float t)
+#include <memory.h>
+
+void Memcpy(void* dest, void* src, size_t size)
 {
-  float delta = b - a;
-  return a + (delta * t);
+  memcpy(dest, src, size);
 }
 
 

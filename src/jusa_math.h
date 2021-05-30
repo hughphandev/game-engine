@@ -20,6 +20,7 @@ inline float Cos(float value);
 inline float Tan(float value);
 inline float Atan2(float a, float b);
 inline float Atan(float value);
+inline float Lerp(float a, float b, float t);
 
 union v2
 {

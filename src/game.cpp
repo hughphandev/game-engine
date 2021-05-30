@@ -3,9 +3,9 @@
 #include "jusa_intrinsics.h"
 #include "jusa_utils.h"
 #include "jusa_render.h"
+#include <stdlib.h>
+#include "jusa_random.h"
 
-void ClearScreen(game_offscreen_buffer* buffer, color c);
-void DrawRectangle(game_offscreen_buffer* buffer, color c, rec r, game_camera cam);
 
 v2 rec::GetMinBound()
 {
@@ -18,6 +18,7 @@ v2 rec::GetMaxBound()
   //TODO: Test
   return { this->pos.x + (this->width / 2.0f), this->pos.y + (this->height / 2.0f) };
 }
+
 
 bool IsBoxOverlapping(rec a, rec b)
 {
@@ -35,6 +36,7 @@ bool IsBoxOverlapping(rec a, rec b)
 
 void DrawLine(game_offscreen_buffer* buffer, v2 from, v2 to, u32 lineColor)
 {
+  //NOTE: this will draw line in screen coord
   u32* pixel = (u32*)buffer->memory;
   if (from.x == to.x)
   {
@@ -68,9 +70,18 @@ void DrawLine(game_offscreen_buffer* buffer, v2 from, v2 to, u32 lineColor)
   }
 }
 
-bool RayToRec(v2 rayOrigin, v2 rayVec, rec r, v2* contactPoint, v2* contactNormal, float* tHit)
+struct ray_cast_hit
 {
-  if (rayVec == 0.0f) return false;
+  bool isContact;
+  float t;
+  v2 cPoint;
+  v2 cNormal;
+};
+
+ray_cast_hit RayToRec(v2 rayOrigin, v2 rayVec, rec r)
+{
+  ray_cast_hit result = {};
+  if (rayVec == 0.0f) return { false, 0, {}, {} };
   v2 minPos = r.GetMinBound();
   v2 maxPos = r.GetMaxBound();
 
@@ -78,106 +89,118 @@ bool RayToRec(v2 rayOrigin, v2 rayVec, rec r, v2* contactPoint, v2* contactNorma
   v2 tFar = (maxPos - rayOrigin) / rayVec;
 
   //Note: check if value is a floating point number!
-  if (tFar != tFar || tNear != tNear) return false;
+  if (tFar != tFar || tNear != tNear) return { false, 0, {}, {} };
 
   if (tNear.x > tFar.x) Swap(&tNear.x, &tFar.x);
   if (tNear.y > tFar.y) Swap(&tNear.y, &tFar.y);
 
-  if (tNear.x >= tFar.y || tNear.y >= tFar.x) return false;
+  if (tNear.x >= tFar.y || tNear.y >= tFar.x) return result;
 
-  *tHit = Max(tNear.x, tNear.y);
+  result.t = Max(tNear.x, tNear.y);
   float tHitFar = Min(tFar.x, tFar.y);
 
-  if (tHitFar <= 0 || (*tHit) >= 1.0f) return false;
-
-  *contactPoint = rayOrigin + (rayVec * (*tHit));
-
-  if (tNear.x > tNear.y)
+  if (tHitFar <= 0 || (result.t) >= 1.0f)
   {
-    if (rayVec.x > 0.0)
-    {
-      *contactNormal = { -1.0f, 0.0f };
-    }
-    else
-    {
-      *contactNormal = { 1.0f, 0.0f };
-    }
+    result.isContact = false;
   }
   else
   {
-    if (rayVec.y < 0.0f)
+    result.isContact = true;
+    result.cPoint = rayOrigin + (rayVec * result.t);
+
+    if (tNear.x > tNear.y)
     {
-      *contactNormal = { 0.0f, 1.0f };
+      if (rayVec.x > 0.0)
+      {
+        result.cNormal = { -1.0f, 0.0f };
+      }
+      else
+      {
+        result.cNormal = { 1.0f, 0.0f };
+      }
     }
     else
     {
-      *contactNormal = { 0.0f, -1.0f };
+      if (rayVec.y < 0.0f)
+      {
+        result.cNormal = { 0.0f, 1.0f };
+      }
+      else
+      {
+        result.cNormal = { 0.0f, -1.0f };
+      }
     }
   }
-
-  return true;
+  return result;
 }
 
-void MoveAndSlide(entity* entity, v2 motion, game_world* world, float timeStep)
+void MoveAndSlide(entity* e, v2 motion, game_state* gameState, float timeStep)
 {
+  if (Abs(motion) < 0.0001f) return;
+
   //TODO: solution for world boundary
-  rec* hitbox = &entity->hitbox;
+  v2 orgMotion = motion;
+  rec* hitbox = &e->hitbox;
   v2 dp = {};
   v2 moveBefore = {};
+  v2 moveLeft = {};
   v2 pos = hitbox->pos;
+  game_world* world = &gameState->world;
+  entity* last = NULL;
+  v2 minContactNormal = {};
 
   do
   {
     float tMin = 1.0f;
-    v2 minContactNormal = {};
 
-    for (u32 y = 0; y < world->tileCountY; ++y)
+    for (i32 i = 0; i < gameState->entityCount; ++i)
     {
-      for (u32 x = 0; x < world->tileCountX; ++x)
+      rec current = gameState->entities[i].hitbox;
+      if (e->hitbox.pos == current.pos) continue;
+
+      rec imRec = { current.pos,  current.size + e->hitbox.size };
+
+      ray_cast_hit rch = RayToRec(pos, motion * timeStep, imRec);
+
+      if (rch.isContact)
       {
-        u32 tileIndex = y * world->tileCountX + x;
-        rec imRec = { world->tileMap[tileIndex].bound.pos, world->tileMap[tileIndex].bound.size + hitbox->size };
 
-        v2 contactNormal = {};
-        v2 contactPoint = {};
-
-        if (world->tileMap[tileIndex].type == TILE_WALL)
+        //Note: only true with aabb
+        //TODO: solution for generic case if needed
+        if (rch.t >= 0.0f && rch.t < tMin)
         {
-          // resolve collision
-          float tHit = 0.0f;
-          if (RayToRec(pos, motion * timeStep, imRec, &contactPoint, &contactNormal, &tHit))
-          {
-
-            //Note: only true with aabb
-            //TODO: solution for generic case if needed
-            if ((tMin) > (tHit))
-            {
-              tMin = tHit;
-              minContactNormal = contactNormal;
-            }
-          }
+          tMin = rch.t;
+          minContactNormal = rch.cNormal;
+          last = &gameState->entities[i];
         }
       }
     }
-    ASSERT(tMin >= 0.0f);
-    v2 moveLeft = motion * (1.0f - tMin);
-    moveBefore = motion * tMin;
-    motion = (moveLeft - minContactNormal * Inner(minContactNormal, moveLeft));
 
-    dp += moveBefore * timeStep;
-    entity->vel = moveBefore;
+    if (tMin >= 0.0f)
+    {
+      moveLeft = motion * (1.0f - tMin);
+      moveBefore = motion * tMin;
+      motion = (moveLeft - minContactNormal * Inner(minContactNormal, moveLeft));
 
-    pos += moveBefore * timeStep;
-  } while (Abs(motion) > 0.0001f);
+      dp += moveBefore * timeStep;
+
+      pos += moveBefore * timeStep;
+    }
+    else
+    {
+      moveBefore = motion;
+      dp = moveBefore * timeStep;
+      moveLeft = 0.0f;
+    }
+  } while (Abs(moveLeft) > 0.0001f);
 
   hitbox->pos += dp;
-
-  entity->vel += motion * timeStep;
+  e->vel = (orgMotion - minContactNormal * Inner(minContactNormal, orgMotion));
 }
 
-#define PUSH_ARRAY(pool, type, count) (type*)PushSize_(pool, (sizeof(type) * count))
-#define PUSH_TYPE(pool, type) (type*)PushSize_(pool, sizeof(type))
-static void* PushSize_(memory_pool* pool, size_t bytes)
+#define PUSH_ARRAY(pool, type, count) (type*)PushSize_(pool, sizeof(type) * (count))
+#define PUSH_TYPE(pool, type) (type*)PushSize_(pool, sizeof((type))
+static void* PushSize_(memory_arena* pool, size_t bytes)
 {
   ASSERT((pool->size - pool->used) >= bytes);
 
@@ -186,14 +209,14 @@ static void* PushSize_(memory_pool* pool, size_t bytes)
   return result;
 }
 
-static void InitializeMemoryPool(memory_pool* pool, size_t size, void* base)
+static void InitMemoryArena(memory_arena* arena, size_t size, void* base)
 {
-  pool->base = (u8*)base;
-  pool->size = size;
-  pool->used = 0;
+  arena->base = (u8*)base;
+  arena->size = size;
+  arena->used = 0;
 }
 
-inline rec GetTileBound(game_world* world, u32 x, u32 y)
+inline rec GetTileBound(game_world* world, i32 x, i32 y)
 {
   //NOTE: x, y start at top left corner!
   //TODO: Test
@@ -222,9 +245,40 @@ inline v2 GetTileIndex(game_world* world, v2 pos)
   return GetTileIndex(world, pos.x, pos.y);
 }
 
-inline img DEBUGLoadBMP(game_memory* mem, game_state* gameState, char* fileName)
+#define RIFF_CODE(a, b, c, d) (((u32)(a) << 0) | ((u32)(b) << 8) | ((u32)(c) << 16) | ((u32)(d) << 24)) 
+
+inline void* GetFileChunk(void* content, u32 contentSize, u32 id)
 {
-  img result = {};
+  for (u32 i = 0; i < contentSize; ++i)
+  {
+    if (*(u32*)((char*)content + i) == id) return ((char*)content + i);
+  }
+  return NULL;
+}
+
+inline loaded_sound DEBUGLoadWAV(game_state* gameState, game_memory* mem, char* fileName)
+{
+  //TODO: Only PCM for now! Support other audio format if needed.
+  loaded_sound result = {};
+  debug_read_file_result file = mem->DEBUGPlatformReadFile(fileName);
+  if (file.contentSize > 0)
+  {
+    wav_header* header = (wav_header*)file.contents;
+    wav_fmt* fmt = (wav_fmt*)GetFileChunk(file.contents, file.contentSize, RIFF_CODE('f', 'm', 't', ' '));
+    wav_data* data = (wav_data*)GetFileChunk(file.contents, file.contentSize, RIFF_CODE('d', 'a', 't', 'a'));
+
+    //TODO: load to memory arena and free current memory;
+    result.sampleCount = data->dataSize / (fmt->bitPerSample / 8);
+    result.samples = (i16*)((char*)data + sizeof(data));
+    result.sampleRate = fmt->sampleRate;
+    result.channel = fmt->channel;
+  }
+  return result;
+};
+
+inline loaded_bitmap DEBUGLoadBMP(game_state* gameState, game_memory* mem, char* fileName)
+{
+  loaded_bitmap result = {};
 
   debug_read_file_result file = mem->DEBUGPlatformReadFile(fileName);
   if (file.contentSize > 0)
@@ -232,7 +286,7 @@ inline img DEBUGLoadBMP(game_memory* mem, game_state* gameState, char* fileName)
     bmp_header* header = (bmp_header*)file.contents;
     u32* filePixel = (u32*)((u8*)file.contents + header->offSet);
 
-    result.pixel = PUSH_ARRAY(&gameState->pool, u32, header->width * header->height);
+    result.pixel = PUSH_ARRAY(&gameState->arena, u32, header->width * header->height);
     result.width = header->width;
     result.height = header->height;
 
@@ -265,11 +319,29 @@ inline img DEBUGLoadBMP(game_memory* mem, game_state* gameState, char* fileName)
         result.pixel[indexMem] = (alpha | red | green | blue);
       }
     }
+    mem->DEBUGPlatformFreeMemory(file.contents);
   }
   return result;
 }
 
-static void DrawImage(game_offscreen_buffer* buffer, img* image)
+inline v2 WorldPointToScreen(game_camera* cam, v2 point)
+{
+  //TODO: Test
+  v2 relPos = point - cam->pos;
+  v2 screenCoord = { relPos.x * (float)cam->pixelPerMeter, -relPos.y * (float)cam->pixelPerMeter };
+  return screenCoord + cam->offSet;
+}
+
+inline v2 ScreenPointToWorld(game_camera* cam, v2 point)
+{
+  //TODO: Test
+  //TODO: fix offset of the pointer to the top-left of the window or change mouseX, mouseY relative to the top-left of the window
+  v2 relPos = point - cam->offSet;
+  v2 worldCoord = { relPos.x / (float)cam->pixelPerMeter, -relPos.y / (float)cam->pixelPerMeter };
+  return worldCoord + cam->pos;
+}
+
+static void DrawImage(game_offscreen_buffer* buffer, loaded_bitmap* image)
 {
   u32* pixel = (u32*)buffer->memory;
   u32 width = (image->width < (u32)buffer->width) ? image->width : (u32)buffer->width;
@@ -286,205 +358,7 @@ static void DrawImage(game_offscreen_buffer* buffer, img* image)
   }
 }
 
-inline v2 WorldPointToScreen(game_camera cam, v2 point)
-{
-  //TODO: Test
-  v2 relPos = point - cam.pos;
-  v2 screenCoord = { relPos.x * (float)cam.pixelPerMeter, -relPos.y * (float)cam.pixelPerMeter };
-  return screenCoord + cam.offSet;
-}
-
-inline v2 ScreenPointToWorld(game_camera cam, v2 point, v2 displayOffset)
-{
-  //TODO: Test
-  //TODO: fix offset of the pointer to the top-left of the window or change mouseX, mouseY relative to the top-left of the window
-  v2 relPos = point - cam.offSet - displayOffset;
-  v2 worldCoord = { relPos.x / (float)cam.pixelPerMeter, -relPos.y / (float)cam.pixelPerMeter };
-  return worldCoord + cam.pos;
-}
-
-inline void DrawTile(game_offscreen_buffer* buffer, tile tile, game_camera cam)
-{
-  if (tile.texture == NULL)
-  {
-    return;
-  }
-  v2 minBound = WorldPointToScreen(cam, tile.bound.GetMinBound());
-  v2 maxBound = WorldPointToScreen(cam, tile.bound.GetMaxBound());
-
-  int xMin = (int)Round(minBound.x);
-  int yMin = (int)Round(maxBound.y);
-  int xMax = (int)Round(maxBound.x);
-  int yMax = (int)Round(minBound.y);
-
-  ASSERT(xMax >= xMin);
-  ASSERT(yMax >= yMin);
-
-  u32* pixel = tile.texture->pixel;
-
-  u32* scrPixel = (u32*)buffer->memory;
-  for (int y = yMin; y < yMax; y++)
-  {
-    for (int x = xMin; x < xMax; x++)
-    {
-      if (x >= 0 && x < buffer->width &&
-          y >= 0 && y < buffer->height)
-      {
-        //TODO: fix pixel scaling
-        u32 pX = (u32)(((float)(x - xMin) / (float)(xMax - xMin)) * tile.texture->width);
-        u32 pY = (u32)(((float)(y - yMin) / (float)(yMax - yMin)) * tile.texture->height);
-
-        u32 scrIndex = y * buffer->width + x;
-        scrPixel[scrIndex] = LinearBlend(scrPixel[scrIndex], pixel[pY * tile.texture->width + pX]);
-      }
-    }
-  }
-}
-
-extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
-{
-  game_state* gameState = (game_state*)gameMemory->permanentStorage;
-  if (!gameMemory->initialized)
-  {
-    InitializeMemoryPool(&gameState->pool, gameMemory->permanentStorageSize - sizeof(game_state), (u8*)gameMemory->permanentStorage + sizeof(game_state));
-
-
-    gameState->world = PUSH_TYPE(&gameState->pool, game_world);
-    game_world* world = gameState->world;
-    world->cam = PUSH_TYPE(&gameState->pool, game_camera);
-    world->cam->pixelPerMeter = buffer->height / 9.0f;
-    world->cam->offSet = { buffer->width / 2.0f, buffer->height / 2.0f };
-
-    gameState->background = DEBUGLoadBMP(gameMemory, gameState, "test.bmp");
-    img map = DEBUGLoadBMP(gameMemory, gameState, "map.bmp");
-
-    world->tileCountX = map.width;
-    world->tileCountY = map.height;
-    world->tileSizeInMeter = { 1.0f, 1.0f };
-    world->tileMap = PUSH_ARRAY(&gameState->pool, tile, world->tileCountX * world->tileCountY);
-
-    for (u32 y = 0; y < world->tileCountY; ++y)
-    {
-      for (u32 x = 0; x < world->tileCountX; ++x)
-      {
-        u32 mapIndex = y * world->tileCountX + x;
-        world->tileMap[mapIndex].bound = GetTileBound(world, x, y);
-        switch (map.pixel[mapIndex])
-        {
-          case 0xFF000000:
-          {
-            world->tileMap[mapIndex].type = TILE_WALL;
-            world->tileMap[mapIndex].texture = &gameState->background;
-          }
-          break;
-          case 0xFFFFFFFF:
-          {
-            world->tileMap[mapIndex].type = TILE_WALKABLE;
-            world->tileMap[mapIndex].texture = NULL;
-          }
-          break;
-
-          default:
-          {
-            world->tileMap[mapIndex].type = TILE_NONE;
-          }
-          break;
-        }
-      }
-    }
-
-    world->objCount = 2;
-    world->obj = PUSH_ARRAY(&gameState->pool, rec, world->objCount);
-    for (u32 i = 0; i < world->objCount; ++i)
-    {
-      world->obj[i].pos.x = 2.0f * (float)i;
-      world->obj[i].pos.y = 2;
-      world->obj[i].width = 1;
-      world->obj[i].height = 1;
-    }
-
-    rec* playerHitbox = &gameState->player.hitbox;
-    playerHitbox->width = 0.5f;
-    playerHitbox->height = 0.5f;
-
-    gameMemory->initialized = true;
-  }
-
-  game_world* world = gameState->world;
-  game_camera* cam = world->cam;
-
-  entity* player = &gameState->player;
-
-  v2 dir = { };
-  if (input.right.isDown)
-  {
-    dir.x += 1.0f;
-  }
-  if (input.up.isDown)
-  {
-    dir.y += 1.0f;
-  }
-  if (input.down.isDown)
-  {
-    dir.y -= 1.0f;
-  }
-  if (input.left.isDown)
-  {
-    dir.x -= 1.0f;
-  }
-
-  // float m = 1.0f;
-  // float muy = 0.5f;
-  // float g = 9.8f;
-
-  v2 playerAccel = dir.Normalize() * 20.0f;
-
-  //TODO: reset accelatation when hit wall
-  playerAccel -= 4.0f * player->vel;
-  v2 motion = (0.5f * playerAccel * input.timeStep) + (player->vel);
-
-  MoveAndSlide(player, motion, world, input.timeStep);
-
-  player->vel += playerAccel * input.timeStep;
-
-  cam->pos = player->hitbox.pos;
-
-  ClearScreen(buffer, { 0.0f, 0.0f, 0.0f, 0.0f });
-
-  u32 gray = 0x757D75;
-  for (u32 y = 0; y < world->tileCountY; ++y)
-  {
-    for (u32 x = 0; x < world->tileCountX; ++x)
-    {
-      u32 index = y * world->tileCountX + x;
-      if (world->tileMap[index].texture == NULL)
-      {
-        DrawRectangle(buffer, { 0.0f, 0.0f, 0.0f, 1.0f }, world->tileMap[index].bound, *cam);
-      }
-      else
-      {
-        DrawTile(buffer, world->tileMap[index], *cam);
-      }
-    }
-  }
-
-  v2 playerTile = GetTileIndex(world, player->hitbox.pos);
-  u32 tileIndex = (u32)playerTile.y * world->tileCountX + (u32)playerTile.x;
-  DrawRectangle(buffer, { 1.0f, 0.0f, 1.0f, 1.0f }, world->tileMap[tileIndex].bound, *cam);
-  DrawRectangle(buffer, { 1.0f, 1.0f, 0.0f, 1.0f }, GetTileBound(world, 0, 1), *cam);
-  DrawRectangle(buffer, { 1.0f, 1.0f, 1.0f, 1.0f }, player->hitbox, *cam);
-
-  rec pointerRec = { 0.0f, 0.0f, 0.1f, 0.1f };
-  pointerRec.pos = ScreenPointToWorld(*cam, { (float)input.mouseX, (float)input.mouseY }, buffer->offSet);
-  DrawRectangle(buffer, { 1.0f, 1.0f, 1.0f, 1.0f }, pointerRec, *cam);
-}
-
-extern "C" GAME_OUTPUT_SOUND(GameOutputSound)
-{
-  game_state* gameState = (game_state*)gameMemory->permanentStorage;
-}
-
-void ClearScreen(game_offscreen_buffer* buffer, color c)
+void ClearBuffer(game_offscreen_buffer* buffer, color c)
 {
   u32* pixel = (u32*)buffer->memory;
   u32 col = c.ToU32();
@@ -497,28 +371,327 @@ void ClearScreen(game_offscreen_buffer* buffer, color c)
   }
 }
 
+enum brush_type
+{
+  BRUSH_FILL,
+  BRUSH_WIREFRAME
+};
 
-void DrawRectangle(game_offscreen_buffer* buffer, color c, rec r, game_camera cam)
+void DrawRectangle(game_offscreen_buffer* buffer, game_camera* cam, rec r, color c, brush_type brush = BRUSH_FILL)
 {
   v2 minBound = WorldPointToScreen(cam, r.GetMinBound());
   v2 maxBound = WorldPointToScreen(cam, r.GetMaxBound());
+
+  if (minBound.x > maxBound.x) Swap(&minBound.x, &maxBound.x);
+  if (minBound.y > maxBound.y) Swap(&minBound.y, &maxBound.y);
+
+  int xMin = (int)Round(minBound.x);
+  int yMin = (int)Round(minBound.y);
+  int xMax = (int)Round(maxBound.x);
+  int yMax = (int)Round(maxBound.y);
+  if (brush == BRUSH_FILL)
+  {
+    u32* mem = (u32*)buffer->memory;
+    u32 col = c.ToU32();
+    for (int x = xMin; x < xMax; x++)
+    {
+      for (int y = yMin; y < yMax; y++)
+      {
+        if (x >= 0 && x < buffer->width &&
+            y >= 0 && y < buffer->height)
+        {
+          mem[y * buffer->width + x] = col;
+        }
+      }
+    }
+  }
+  else if (brush == BRUSH_WIREFRAME)
+  {
+    // Draw tile bound
+    DrawLine(buffer, { (float)xMin, (float)yMin }, { (float)xMax, (float)yMin }, c.ToU32());
+    DrawLine(buffer, { (float)xMax, (float)yMin }, { (float)xMax, (float)yMax }, c.ToU32());
+    DrawLine(buffer, { (float)xMax, (float)yMax }, { (float)xMin, (float)yMax }, c.ToU32());
+    DrawLine(buffer, { (float)xMin, (float)yMax }, { (float)xMin, (float)yMin }, c.ToU32());
+  }
+}
+
+inline void DrawTexture(game_offscreen_buffer* buffer, game_camera* cam, rec bound, loaded_bitmap* texture)
+{
+  if (texture == NULL)
+  {
+    return;
+  }
+  v2 minBound = WorldPointToScreen(cam, bound.GetMinBound());
+  v2 maxBound = WorldPointToScreen(cam, bound.GetMaxBound());
 
   int xMin = (int)Round(minBound.x);
   int yMin = (int)Round(maxBound.y);
   int xMax = (int)Round(maxBound.x);
   int yMax = (int)Round(minBound.y);
 
-  u32* mem = (u32*)buffer->memory;
-  u32 col = c.ToU32();
-  for (int x = xMin; x < xMax; x++)
+  ASSERT(xMax >= xMin);
+  ASSERT(yMax >= yMin);
+
+  u32* pixel = texture->pixel;
+
+  u32* scrPixel = (u32*)buffer->memory;
+  for (int y = yMin; y < yMax; y++)
   {
-    for (int y = yMin; y < yMax; y++)
+    for (int x = xMin; x < xMax; x++)
     {
       if (x >= 0 && x < buffer->width &&
           y >= 0 && y < buffer->height)
       {
-        mem[y * buffer->width + x] = col;
+        //TODO: fix pixel scaling
+        u32 pX = (u32)(((float)(x - xMin) / (float)(xMax - xMin)) * texture->width);
+        u32 pY = (u32)(((float)(y - yMin) / (float)(yMax - yMin)) * texture->height);
+
+        u32 scrIndex = y * buffer->width + x;
+        scrPixel[scrIndex] = LinearBlend(scrPixel[scrIndex], pixel[pY * texture->width + pX]);
       }
     }
   }
+}
+
+entity* AddEntity(game_state* gameState, entity it)
+{
+  ASSERT(gameState->entityCount <= ARRAY_COUNT(gameState->entities));
+
+  entity* result = &gameState->entities[gameState->entityCount++];
+  *result = it;
+  return result;
+}
+
+void RemoveEntity(game_state* gameState, entity* it)
+{
+  ASSERT(it != NULL);
+
+  size_t entityIndex = it - gameState->entities;
+  size_t copySize = gameState->entityCount - entityIndex - 1;
+  entity* next = it + 1;
+  if (copySize > 0)
+  {
+    Memcpy(it, next, copySize * sizeof(*it));
+  }
+  --gameState->entityCount;
+}
+
+struct level
+{
+  i32 entityCount;
+  entity* entities;
+};
+
+void SaveLevel(game_state* gameState, char* fileName, debug_platform_write_file WriteFile)
+{
+  WriteFile(fileName, gameState->entityCount * sizeof(entity), gameState->entities);
+}
+
+void LoadLevel(game_state* gameState, char* fileName, debug_platform_read_file ReadFile, debug_platform_free_memory FreeMemory)
+{
+  debug_read_file_result fileLevel = ReadFile(fileName);
+  if (fileLevel.contentSize > 0)
+  {
+    entity* entities = (entity*)fileLevel.contents;
+    gameState->entityCount = fileLevel.contentSize / sizeof(entity);
+    for (int i = 0; i < gameState->entityCount; ++i)
+    {
+      gameState->entities[i] = entities[i];
+    }
+    FreeMemory(entities);
+  }
+}
+
+extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
+{
+  game_state* gameState = (game_state*)gameMemory->permanentStorage;
+  if (!gameMemory->isInited)
+  {
+    InitMemoryArena(&gameState->arena, gameMemory->permanentStorageSize - sizeof(game_state), (u8*)gameMemory->permanentStorage + sizeof(game_state));
+
+    gameState->programMode = MODE_NORMAL;
+
+    game_world* world = &gameState->world;
+    world->cam.pixelPerMeter = buffer->height / 20.0f;
+    world->cam.offSet = { buffer->width / 2.0f, buffer->height / 2.0f };
+
+    gameState->background = DEBUGLoadBMP(gameState, gameMemory, "test.bmp");
+    gameState->bSound = DEBUGLoadWAV(gameState, gameMemory, "test.wav");
+
+    world->tileCountX = 512;
+    world->tileCountY = 512;
+    world->tileSizeInMeter = { 1.0f, 1.0f };
+
+    entity player = { 0.0f, 0.0f, 0.5f, 0.5f };
+    AddEntity(gameState, player);
+    gameState->playerIndex = gameState->entityCount - 1;
+
+    LoadLevel(gameState, "level_demo.level", gameMemory->DEBUGPlatformReadFile, gameMemory->DEBUGPlatformFreeMemory);
+
+    gameMemory->isInited = true;
+  }
+
+  ClearBuffer(buffer, { 0.0f, 0.0f, 0.0f, 0.5f });
+
+  game_world* world = &gameState->world;
+  game_camera* cam = &world->cam;
+
+  //TODO: using if-else for now! change to state machine if needed.
+  if (gameState->programMode == MODE_NORMAL)
+  {
+    if (input.escape.isDown && input.escape.halfTransitionCount == 1)
+    {
+      gameState->programMode = MODE_MENU;
+    }
+    if (input.f1.isDown && input.f1.halfTransitionCount == 1)
+    {
+      gameState->programMode = MODE_EDITOR;
+    }
+
+    entity* player = &gameState->entities[gameState->playerIndex];
+
+    v2 dir = { };
+    if (input.right.isDown)
+    {
+      dir.x += 1.0f;
+    }
+    if (input.up.isDown)
+    {
+      dir.y += 1.0f;
+    }
+    if (input.down.isDown)
+    {
+      dir.y -= 1.0f;
+    }
+    if (input.left.isDown)
+    {
+      dir.x -= 1.0f;
+    }
+    v2 playerAccel = dir.Normalize() * 50.0f;
+
+    if (input.space.isDown && input.space.halfTransitionCount == 1)
+    {
+      player->vel = player->vel.Normalize() * 30.0f;
+    }
+    else
+    {
+      player->vel += playerAccel * input.dt;
+    }
+
+    for (int i = 0; i < gameState->entityCount; ++i)
+    {
+      MoveAndSlide(&gameState->entities[i], gameState->entities[i].vel, gameState, input.dt);
+    }
+    player->vel -= 0.2f * player->vel;
+
+    for (int i = 0; i < gameState->entityCount; ++i)
+    {
+      DrawRectangle(buffer, cam, gameState->entities[i].hitbox, { 1.0f, 1.0f, 1.0f, 1.0f });
+    }
+  }
+  else if (gameState->programMode == MODE_MENU)
+  {
+    if (input.escape.isDown && input.escape.halfTransitionCount == 1)
+    {
+      gameState->programMode = MODE_NORMAL;
+    }
+    DrawImage(buffer, &gameState->background);
+  }
+  else if (gameState->programMode == MODE_EDITOR)
+  {
+    if (input.escape.isDown && input.escape.halfTransitionCount == 1)
+    {
+      gameState->programMode = MODE_NORMAL;
+
+      SaveLevel(gameState, "level_demo.level", gameMemory->DEBUGPlatformWriteFile);
+    }
+    v2 pos = ScreenPointToWorld(cam, { (float)input.mouseX, (float)input.mouseY });
+    v2 tileIndex = GetTileIndex(world, pos);
+    rec tileBox = GetTileBound(world, (i32)tileIndex.x, (i32)tileIndex.y);
+
+    DrawRectangle(buffer, cam, tileBox, { 1.0f, 1.0f, 1.0f, 1.0f }, BRUSH_WIREFRAME);
+
+    if (input.mouseButtonState[0])
+    {
+      entity it = {};
+      it.hitbox = tileBox;
+
+      for (int i = 0; i < gameState->entityCount; ++i)
+      {
+        if (IsBoxOverlapping(it.hitbox, gameState->entities[i].hitbox))
+        {
+          break;
+        }
+        else if (i == gameState->entityCount - 1)
+        {
+          AddEntity(gameState, it);
+        }
+      }
+    }
+    else if (input.mouseButtonState[1])
+    {
+      rec eraser = {};
+      eraser.size = { 0.5f, 0.5f };
+      eraser.pos = ScreenPointToWorld(cam, { (float)input.mouseX, (float)input.mouseY });
+      for (int i = 0; i < gameState->entityCount; ++i)
+      {
+        if (IsBoxOverlapping(eraser, gameState->entities[i].hitbox))
+        {
+          RemoveEntity(gameState, &gameState->entities[i]);
+        }
+      }
+    }
+
+    v2 dir = { };
+    if (input.right.isDown)
+    {
+      dir.x += 1.0f;
+    }
+    if (input.up.isDown)
+    {
+      dir.y += 1.0f;
+    }
+    if (input.down.isDown)
+    {
+      dir.y -= 1.0f;
+    }
+    if (input.left.isDown)
+    {
+      dir.x -= 1.0f;
+    }
+    cam->pos += dir.Normalize() * 10.0f * input.dt;
+
+    for (int i = 0; i < gameState->entityCount; ++i)
+    {
+      DrawRectangle(buffer, cam, gameState->entities[i].hitbox, { 1.0f, 1.0f, 1.0f, 1.0f });
+    }
+  }
+}
+
+void PlaySound(game_sound_output* soundBuffer, loaded_sound* sound)
+{
+  if (sound->isLooped || sound->playIndex < sound->sampleCount)
+  {
+    if ((sound->playIndex + soundBuffer->sampleCount) < sound->sampleCount)
+    {
+      Memcpy(soundBuffer->samples, sound->samples + sound->playIndex, soundBuffer->sampleCount * soundBuffer->bytesPerSample);
+    }
+    else
+    {
+      size_t sampleWrite1 = sound->sampleCount - sound->playIndex;
+      Memcpy(soundBuffer->samples, sound->samples + sound->playIndex, sampleWrite1 * soundBuffer->bytesPerSample);
+
+      size_t sampleWrite2 = soundBuffer->sampleCount - sampleWrite1;
+      i16* sampleRegion2 = soundBuffer->samples + sampleWrite2 * sound->channel;
+      Memcpy(sampleRegion2, sound->samples + sound->playIndex, sampleWrite2 * soundBuffer->bytesPerSample);
+    }
+    sound->playIndex += soundBuffer->sampleCount * sound->channel;
+  }
+}
+
+extern "C" GAME_OUTPUT_SOUND(GameOutputSound)
+{
+  game_state* gameState = (game_state*)gameMemory->permanentStorage;
+
+  PlaySound(soundBuffer, &gameState->bSound);
 }

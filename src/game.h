@@ -18,7 +18,7 @@ typedef DEBUG_PLATFORM_READ_FILE(debug_platform_read_file);
 #define DEBUG_PLATFORM_FREE_MEMORY(name)void name (void* memory) 
 typedef DEBUG_PLATFORM_FREE_MEMORY(debug_platform_free_memory);
 
-#define DEBUG_PLATFORM_WRITE_FILE(name) bool name(char* fileName, u32 memorySize, void* memory) 
+#define DEBUG_PLATFORM_WRITE_FILE(name) bool name(char* fileName, size_t memorySize, void* memory) 
 typedef DEBUG_PLATFORM_WRITE_FILE(debug_platform_write_file);
 
 DEBUG_PLATFORM_READ_FILE(DEBUGPlatformReadFile);
@@ -31,15 +31,12 @@ struct game_offscreen_buffer
   void* memory;
   int width;
   int height;
-
-  // relative to window
-  v2 offSet;
 };
 
 struct game_sound_output
 {
-  int samplesPerSecond;
-  int sampleCount;
+  u32 bytesPerSample;
+  u32 sampleCount;
   i16* samples;
 };
 
@@ -54,22 +51,25 @@ struct game_input
   // button
   union
   {
-    button_state buttons[4];
+    button_state buttons[7];
     struct
     {
       button_state up;
       button_state down;
       button_state left;
       button_state right;
+      button_state escape;
+      button_state space;
+      button_state f1;
     };
   };
 
   // Mouse
-  int mouseX, mouseY, mouseZ;
+  i32 mouseX, mouseY, mouseZ;
   bool mouseButtonState[5];
 
   // clock
-  float timeStep;
+  float dt;
 }; // TODO: Clean up
 
 union rec
@@ -96,42 +96,34 @@ struct game_camera
   float pixelPerMeter;
 };
 
-struct memory_pool
-{
-  void* base;
-  size_t used;
-  size_t size;
-};
-
-struct img
+struct loaded_bitmap
 {
   u32* pixel;
   u32 width;
   u32 height;
 };
 
-enum tile_type
+struct loaded_sound
 {
-  TILE_NONE,
-  TILE_WALKABLE,
-  TILE_WALL
+  i16* samples;
+  size_t sampleCount;
+  size_t playIndex = 0;
+  u32 channel;
+  u32 sampleRate;
+  bool isLooped;
 };
 
-struct tile
+struct memory_arena
 {
-  rec bound;
-  img* texture;
-  tile_type type;
+  void* base;
+  size_t used;
+  size_t size;
 };
 
 struct game_world
 {
-  game_camera* cam;
+  game_camera cam;
 
-  rec* obj;
-  u32 objCount;
-
-  tile* tileMap;
   u32 tileCountX;
   u32 tileCountY;
   v2 tileSizeInMeter;
@@ -142,15 +134,26 @@ struct entity
   rec hitbox;
   v2 vel;
 };
+enum program_mode
+{
+  MODE_NORMAL,
+  MODE_EDITOR,
+  MODE_MENU
+};
 
 struct game_state
 {
-  memory_pool pool;
-  game_world* world;
+  memory_arena arena;
+  game_world world;
 
-  entity player;
-  v2 playerVel;
-  img background;
+  entity entities[100000];
+  i32 entityCount;
+  i32 playerIndex;
+
+  loaded_bitmap background;
+  loaded_sound bSound;
+  u32 soundIndex;
+  program_mode programMode;
 };
 
 #pragma pack(push, 1)
@@ -181,12 +184,35 @@ struct bmp_header
   u32 blueMask;
   u32 alphaMask;
 };
+
+struct wav_header
+{
+  char riffID[4];
+  u32 fileSize;
+  char waveID[4];
+};
+struct wav_fmt
+{
+  char fmtID[4];
+  u32 fmtSize;
+  u16 audioFormat;
+  u16 channel;
+  u32 sampleRate;
+  u32 byteRate;
+  u16 blockAlign;
+  u16 bitPerSample;
+};
+struct wav_data
+{
+  char dataID[4];
+  u32 dataSize;
+};
 #pragma pack(pop)
 
 
 struct game_memory
 {
-  bool initialized;
+  bool isInited;
 
   u64 permanentStorageSize;
   void* permanentStorage; // TODO: REQUIRE clear to zero on startup

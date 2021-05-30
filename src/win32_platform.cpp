@@ -140,14 +140,14 @@ debug_read_file_result DEBUGPlatformReadFile(char* fileName)
   return result;
 }
 
-bool DEBUGPlatformWriteFile(char* fileName, uint32_t memorySize, void* memory)
+bool DEBUGPlatformWriteFile(char* fileName, size_t memorySize, void* memory)
 {
   bool result = false;
   HANDLE fileHandle = CreateFileA(fileName, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
   if (fileHandle != INVALID_HANDLE_VALUE)
   {
     DWORD bytesWrite;
-    if (WriteFile(fileHandle, memory, memorySize, &bytesWrite, 0))
+    if (WriteFile(fileHandle, memory, (DWORD)memorySize, &bytesWrite, 0))
     {
       result = (bytesWrite == memorySize);
       //TODO: File write sucessfully
@@ -156,7 +156,7 @@ bool DEBUGPlatformWriteFile(char* fileName, uint32_t memorySize, void* memory)
     {
       //TODO: Logging
     }
-    FindClose(fileHandle);
+    CloseHandle(fileHandle);
   }
   else
   {
@@ -206,7 +206,6 @@ static void Win32BufferToWindow(HDC deviceContext, win32_offscreen_buffer* buffe
 {
   //Note: not stretching for debug purpose!
   //TODO: switch to aspect ratio in the future!
-  PatBlt(deviceContext, 0, 0, windowWidth, windowHeight, WHITENESS);
 
   buffer->offSet.x = 0.5f * (float)(windowWidth - buffer->width);
   buffer->offSet.y = 0.5f * (float)(windowHeight - buffer->height);
@@ -339,7 +338,7 @@ LRESULT CALLBACK MainWindowCallback(HWND window, UINT message, WPARAM wParam,
       int y = paint.rcPaint.top;
       int width = paint.rcPaint.right - paint.rcPaint.left;
       int height = paint.rcPaint.bottom - paint.rcPaint.top;
-      Win32BufferToWindow(deviceContext, &g_backBuffer, width, height);
+      PatBlt(deviceContext, 0, 0, width, height, WHITENESS);
 
       EndPaint(window, &paint);
     }
@@ -578,6 +577,18 @@ static void Win32ProcessPendingMessages(game_input* input, win32_state* win32Sta
           if (msg.wParam == 'D')
           {
             Win32ProcessKeyboardInput(&input->right, isDown);
+          }
+          if (msg.wParam == VK_ESCAPE)
+          {
+            Win32ProcessKeyboardInput(&input->escape, isDown);
+          }
+          if (msg.wParam == VK_SPACE)
+          {
+            Win32ProcessKeyboardInput(&input->space, isDown);
+          }
+          if (msg.wParam == VK_F1)
+          {
+            Win32ProcessKeyboardInput(&input->f1, isDown);
           }
 
           if (msg.wParam == 'K' && isDown)
@@ -830,7 +841,7 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
       win32_sound_output soundOutput = {};
       soundOutput.runningSampleIndex = 0;
       soundOutput.bytesPerSample = sizeof(int16_t) * 2;
-      soundOutput.samplesPerSecond = 48000;
+      soundOutput.samplesPerSecond = 44100;
       soundOutput.secondaryBufferSize = soundOutput.samplesPerSecond * soundOutput.bytesPerSample;
       soundOutput.safetyBytes = (int)((float)(soundOutput.samplesPerSecond * soundOutput.bytesPerSample / gameUpdateHz) / 3.0f);
       Win32InitDSound(window, soundOutput.samplesPerSecond,
@@ -847,8 +858,8 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
 #endif
       // Static Memory allocation at start up
       game_memory gameMemory = {};
-      gameMemory.permanentStorageSize = MEGABYTES(32);
-      gameMemory.transientStorageSize = MEGABYTES(512);
+      gameMemory.permanentStorageSize = MEGABYTES(512);
+      gameMemory.transientStorageSize = MEGABYTES(32);
       gameMemory.DEBUGPlatformFreeMemory = DEBUGPlatformFreeMemory;
       gameMemory.DEBUGPlatformReadFile = DEBUGPlatformReadFile;
       gameMemory.DEBUGPlatformWriteFile = DEBUGPlatformWriteFile;
@@ -920,8 +931,8 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
           POINT mousePoint;
           GetCursorPos(&mousePoint);
           ScreenToClient(window, &mousePoint);
-          input->mouseX = mousePoint.x;
-          input->mouseY = mousePoint.y;
+          input->mouseX = mousePoint.x - (i32)g_backBuffer.offSet.x;
+          input->mouseY = mousePoint.y - (i32)g_backBuffer.offSet.y;
           input->mouseZ = 0;
           input->mouseButtonState[0] = GetKeyState(VK_LBUTTON) & (1 << 15);
           input->mouseButtonState[1] = GetKeyState(VK_RBUTTON) & (1 << 15);
@@ -930,7 +941,7 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
           input->mouseButtonState[4] = GetKeyState(VK_XBUTTON2) & (1 << 15);
 
           // Note: Update the game in fixed interval
-          input->timeStep = secondsPerUpdate;
+          input->dt = secondsPerUpdate;
           if (recordState.isRecording)
           {
             Win32RecordInput(*input, &recordState);
@@ -946,7 +957,6 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
             buffer.memory = g_backBuffer.memory;
             buffer.width = g_backBuffer.width;
             buffer.height = g_backBuffer.height;
-            buffer.offSet = g_backBuffer.offSet;
 
             game.UpdateAndRender(&gameMemory, &buffer, *input);
 
@@ -1013,9 +1023,9 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
               }
 
               game_sound_output soundBuffer = {};
-              soundBuffer.samplesPerSecond = soundOutput.samplesPerSecond;
               soundBuffer.sampleCount = bytesWrite / soundOutput.bytesPerSample;
               soundBuffer.samples = samples;
+              soundBuffer.bytesPerSample = soundOutput.bytesPerSample;
 
               game.OutputSound(&gameMemory, &soundBuffer);
 
