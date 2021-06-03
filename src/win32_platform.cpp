@@ -393,23 +393,23 @@ void Win32FillSoundBuffer(win32_sound_output* soundOutput, DWORD writePosition,
   {
     int16_t* sampleOut = (int16_t*)region1;
     int16_t* source = sourceBuffer->samples;
-    DWORD region1SampleCount = region1Size / soundOutput->bytesPerSample;
-    for (DWORD i = 0; i < region1SampleCount; ++i)
+    DWORD region1BlockCount = region1Size / soundOutput->bytesPerBlock ;
+    for (DWORD i = 0; i < region1BlockCount; ++i)
     {
       *sampleOut++ = *source++;
       *sampleOut++ = *source++;
 
-      ++soundOutput->runningSampleIndex;
+      ++soundOutput->blockIndex;
     }
 
-    DWORD region2SampleCount = region2Size / soundOutput->bytesPerSample;
+    DWORD region2BlockCount = region2Size / soundOutput->bytesPerBlock;
     sampleOut = (int16_t*)region2;
-    for (DWORD i = 0; i < region2SampleCount; ++i)
+    for (DWORD i = 0; i < region2BlockCount; ++i)
     {
       *sampleOut++ = *source++;
       *sampleOut++ = *source++;
 
-      ++soundOutput->runningSampleIndex;
+      ++soundOutput->blockIndex;
     }
     g_secondaryBuffer->Unlock(region1, region1Size, region2, region2Size);
   }
@@ -839,12 +839,12 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
       float gameUpdateHz = (monitorRefreshHz / 2.0f);
       float secondsPerUpdate = 1.0f / gameUpdateHz;
       win32_sound_output soundOutput = {};
-      soundOutput.runningSampleIndex = 0;
-      soundOutput.bytesPerSample = sizeof(int16_t) * 2;
-      soundOutput.samplesPerSecond = 44100;
-      soundOutput.secondaryBufferSize = soundOutput.samplesPerSecond * soundOutput.bytesPerSample;
-      soundOutput.safetyBytes = (int)((float)(soundOutput.samplesPerSecond * soundOutput.bytesPerSample / gameUpdateHz) / 3.0f);
-      Win32InitDSound(window, soundOutput.samplesPerSecond,
+      soundOutput.blockIndex = 0;
+      soundOutput.bytesPerBlock = sizeof(int16_t) * 2;
+      soundOutput.blocksPerSecond = 44100;
+      soundOutput.secondaryBufferSize = soundOutput.blocksPerSecond * soundOutput.bytesPerBlock;
+      soundOutput.safetyBytes = (int)((float)(soundOutput.blocksPerSecond * soundOutput.bytesPerBlock / gameUpdateHz) / 3.0f);
+      Win32InitDSound(window, soundOutput.blocksPerSecond,
                       soundOutput.secondaryBufferSize);
       Win32ClearBuffer(&soundOutput);
       g_secondaryBuffer->Play(0, 0, DSBPLAY_LOOPING);
@@ -968,19 +968,19 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
             {
               if (!soundIsValid)
               {
-                soundOutput.runningSampleIndex = writeCursor / soundOutput.bytesPerSample;
+                soundOutput.blockIndex = writeCursor / soundOutput.bytesPerBlock;
                 soundIsValid = true;
               }
 
-              DWORD writePosition = (soundOutput.runningSampleIndex * soundOutput.bytesPerSample) %
+              DWORD writePosition = (soundOutput.blockIndex * soundOutput.bytesPerBlock) %
                 soundOutput.secondaryBufferSize;
 
-              DWORD bytesPerFrame = (DWORD)((float)(soundOutput.samplesPerSecond * soundOutput.bytesPerSample) / gameUpdateHz);
+              DWORD bytesPerFrame = (DWORD)((float)(soundOutput.blocksPerSecond * soundOutput.bytesPerBlock) / gameUpdateHz);
 
               float secondsSinceFlip = Win32GetSecondsElapsed(beginTimer, Win32GetWallClock(), frequency);
 
               DWORD nextFrameBoundary = playCursor + bytesPerFrame;
-              DWORD bytesSinceFlip = (DWORD)(secondsSinceFlip * (soundOutput.samplesPerSecond * soundOutput.bytesPerSample));
+              DWORD bytesSinceFlip = (DWORD)(secondsSinceFlip * (soundOutput.blocksPerSecond * soundOutput.bytesPerBlock));
 
               if (nextFrameBoundary < bytesSinceFlip)
               {
@@ -1023,9 +1023,9 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
               }
 
               game_sound_output soundBuffer = {};
-              soundBuffer.sampleCount = bytesWrite / soundOutput.bytesPerSample;
+              soundBuffer.bytesPerSample = soundOutput.bytesPerBlock / 2;
+              soundBuffer.sampleCount = bytesWrite / soundBuffer.bytesPerSample;
               soundBuffer.samples = samples;
-              soundBuffer.bytesPerSample = soundOutput.bytesPerSample;
 
               game.OutputSound(&gameMemory, &soundBuffer);
 

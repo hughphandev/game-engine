@@ -43,9 +43,9 @@ struct win32_offscreen_buffer
 // NOTE: considering adding bytesPerSample to simplify calculation;
 struct win32_sound_output
 {
-	uint32_t runningSampleIndex;
-	DWORD bytesPerSample;
-	DWORD samplesPerSecond;
+	uint32_t blockIndex;
+	DWORD bytesPerBlock;
+	DWORD blocksPerSecond; //NOTE: blocks contain 2 sample for left and right channel
 	DWORD secondaryBufferSize;
 	DWORD safetyBytes;
 };

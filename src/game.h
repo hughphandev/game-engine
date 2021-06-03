@@ -35,8 +35,8 @@ struct game_offscreen_buffer
 
 struct game_sound_output
 {
-  u32 bytesPerSample;
-  u32 sampleCount;
+  size_t sampleCount;
+  size_t bytesPerSample;
   i16* samples;
 };
 
@@ -105,11 +105,11 @@ struct loaded_bitmap
 
 struct loaded_sound
 {
-  i16* samples;
-  size_t sampleCount;
-  size_t playIndex = 0;
-  u32 channel;
-  u32 sampleRate;
+  void* mem;
+  size_t samplesCount;
+  size_t channelsCount;
+
+  size_t sampleIndex;
   bool isLooped;
 };
 
@@ -151,8 +151,8 @@ struct game_state
   i32 playerIndex;
 
   loaded_bitmap background;
-  loaded_sound bSound;
-  u32 soundIndex;
+  loaded_sound sounds[10];
+  size_t soundCount;
   program_mode programMode;
 };
 
@@ -187,25 +187,28 @@ struct bmp_header
 
 struct wav_header
 {
-  char riffID[4];
+  u32 riffID;
   u32 fileSize;
-  char waveID[4];
+  u32 waveID;
+};
+
+struct riff_chunk
+{
+  u32 id;
+  u32 dataSize;
 };
 struct wav_fmt
 {
-  char fmtID[4];
-  u32 fmtSize;
   u16 audioFormat;
-  u16 channel;
+  u16 nChannels;
   u32 sampleRate;
   u32 byteRate;
   u16 blockAlign;
-  u16 bitPerSample;
-};
-struct wav_data
-{
-  char dataID[4];
-  u32 dataSize;
+  u16 bitsPerSample;
+  u16 cbSize;
+  u16 validBitsPerSample;
+  u32 channelMask;
+  char subFormat[16];
 };
 #pragma pack(pop)
 

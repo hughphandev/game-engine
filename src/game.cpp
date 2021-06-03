@@ -246,32 +246,69 @@ inline v2 GetTileIndex(game_world* world, v2 pos)
 }
 
 #define RIFF_CODE(a, b, c, d) (((u32)(a) << 0) | ((u32)(b) << 8) | ((u32)(c) << 16) | ((u32)(d) << 24)) 
-
-inline void* GetFileChunk(void* content, u32 contentSize, u32 id)
+enum
 {
-  for (u32 i = 0; i < contentSize; ++i)
-  {
-    if (*(u32*)((char*)content + i) == id) return ((char*)content + i);
-  }
-  return NULL;
+  WAVE_CHUNKID_FMT = RIFF_CODE('f', 'm', 't', ' '),
+  WAVE_CHUNKID_DATA = RIFF_CODE('d', 'a', 't', 'a'),
+  WAVE_CHUNKID_WAVE = RIFF_CODE('W', 'A', 'V', 'E'),
+  WAVE_CHUNKID_RIFF = RIFF_CODE('R', 'I', 'F', 'F')
+};
+
+riff_chunk* NextChunk(riff_chunk* chunk)
+{
+  u8* data = (u8*)(chunk + 1);
+  return (riff_chunk*)(data + chunk->dataSize);
+}
+
+bool Isvalid(debug_read_file_result file, void* mem)
+{
+  return mem < ((u8*)file.contents + file.contentSize);
+}
+
+void* GetChunkData(riff_chunk* chunk)
+{
+  return chunk + 1;
 }
 
 inline loaded_sound DEBUGLoadWAV(game_state* gameState, game_memory* mem, char* fileName)
 {
-  //TODO: Only PCM for now! Support other audio format if needed.
   loaded_sound result = {};
   debug_read_file_result file = mem->DEBUGPlatformReadFile(fileName);
   if (file.contentSize > 0)
   {
     wav_header* header = (wav_header*)file.contents;
-    wav_fmt* fmt = (wav_fmt*)GetFileChunk(file.contents, file.contentSize, RIFF_CODE('f', 'm', 't', ' '));
-    wav_data* data = (wav_data*)GetFileChunk(file.contents, file.contentSize, RIFF_CODE('d', 'a', 't', 'a'));
+    ASSERT(header->waveID == WAVE_CHUNKID_WAVE);
+    ASSERT(header->riffID == WAVE_CHUNKID_RIFF);
 
-    //TODO: load to memory arena and free current memory;
-    result.sampleCount = data->dataSize / (fmt->bitPerSample / 8);
-    result.samples = (i16*)((char*)data + sizeof(data));
-    result.sampleRate = fmt->sampleRate;
-    result.channel = fmt->channel;
+    size_t dataSize = 0;
+    size_t nChannels = 0;
+    size_t bytesPerSample = 0;
+    void* data = 0;
+
+    for (riff_chunk* chunk = (riff_chunk*)(header + 1); Isvalid(file, chunk); chunk = NextChunk(chunk))
+    {
+      switch (chunk->id)
+      {
+        case WAVE_CHUNKID_FMT:
+        {
+          wav_fmt* fmt = (wav_fmt*)GetChunkData(chunk);
+          nChannels = fmt->nChannels;
+          bytesPerSample = fmt->blockAlign / fmt->nChannels;
+
+          ASSERT(fmt->audioFormat == 1); //NOTE: only support PCM
+          ASSERT(bytesPerSample == 2); //TODO: onpy 16 bit samples for now!
+        } break;
+        case WAVE_CHUNKID_DATA:
+        {
+          data = GetChunkData(chunk);
+          dataSize = chunk->dataSize;
+        } break;
+      }
+    }
+
+    result.mem = data;
+    result.samplesCount = dataSize / bytesPerSample;
+    result.channelsCount = nChannels;
   }
   return result;
 };
@@ -502,6 +539,16 @@ void LoadLevel(game_state* gameState, char* fileName, debug_platform_read_file R
   }
 }
 
+void AddSound(game_state* gameState, game_memory* gameMemory, loaded_sound sound)
+{
+  gameState->sounds[gameState->soundCount++] = sound;
+}
+
+void AddSound(game_state* gameState, game_memory* gameMemory, char* soundName)
+{
+  gameState->sounds[gameState->soundCount++] = DEBUGLoadWAV(gameState, gameMemory, soundName);
+}
+
 extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 {
   game_state* gameState = (game_state*)gameMemory->permanentStorage;
@@ -510,13 +557,15 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     InitMemoryArena(&gameState->arena, gameMemory->permanentStorageSize - sizeof(game_state), (u8*)gameMemory->permanentStorage + sizeof(game_state));
 
     gameState->programMode = MODE_NORMAL;
+    // AddSound(gameState, gameMemory, "test.wav");
+
+    AddSound(gameState, gameMemory, "test.wav");
 
     game_world* world = &gameState->world;
     world->cam.pixelPerMeter = buffer->height / 20.0f;
     world->cam.offSet = { buffer->width / 2.0f, buffer->height / 2.0f };
 
     gameState->background = DEBUGLoadBMP(gameState, gameMemory, "test.bmp");
-    gameState->bSound = DEBUGLoadWAV(gameState, gameMemory, "test.wav");
 
     world->tileCountX = 512;
     world->tileCountY = 512;
@@ -670,28 +719,39 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
 void PlaySound(game_sound_output* soundBuffer, loaded_sound* sound)
 {
-  if (sound->isLooped || sound->playIndex < sound->sampleCount)
+  if (sound->isLooped || sound->sampleIndex < sound->samplesCount)
   {
-    if ((sound->playIndex + soundBuffer->sampleCount) < sound->sampleCount)
-    {
-      Memcpy(soundBuffer->samples, sound->samples + sound->playIndex, soundBuffer->sampleCount * soundBuffer->bytesPerSample);
-    }
-    else
-    {
-      size_t sampleWrite1 = sound->sampleCount - sound->playIndex;
-      Memcpy(soundBuffer->samples, sound->samples + sound->playIndex, sampleWrite1 * soundBuffer->bytesPerSample);
+    i16* samples = (i16*)sound->mem + sound->sampleIndex;
 
-      size_t sampleWrite2 = soundBuffer->sampleCount - sampleWrite1;
-      i16* sampleRegion2 = soundBuffer->samples + sampleWrite2 * sound->channel;
-      Memcpy(sampleRegion2, sound->samples + sound->playIndex, sampleWrite2 * soundBuffer->bytesPerSample);
+    for (size_t i = 0; i < soundBuffer->sampleCount; ++i)
+    {
+      if (sound->channelsCount == 1)
+      {
+        soundBuffer->samples[i] = *(samples + i);
+        soundBuffer->samples[i + 1] = *(samples + i);
+        ++i;
+      }
+      else if (sound->channelsCount == 2)
+      {
+        soundBuffer->samples[i] = *(samples + i);
+      }
+      else
+      {
+        ASSERT(!"Currently not support more than 2 channels")
+      }
     }
-    sound->playIndex += soundBuffer->sampleCount * sound->channel;
+    sound->sampleIndex += soundBuffer->sampleCount * (2 / sound->channelsCount);
   }
+}
+
+void MixSound(game_sound_output* soundBuffer, loaded_sound* sounds, size_t soundCount)
+{
+  //TODO: Sound mixer
 }
 
 extern "C" GAME_OUTPUT_SOUND(GameOutputSound)
 {
   game_state* gameState = (game_state*)gameMemory->permanentStorage;
 
-  PlaySound(soundBuffer, &gameState->bSound);
+  PlaySound(soundBuffer, &gameState->sounds[0]);
 }
