@@ -28,4 +28,4 @@ REM Test code
 	cl %CFLAGS% /I%SOURCEDIR% /Fo:%OBJDIR% /Fd:%OBJDIR% %TESTDIR%test.cpp /link %LDFLAGS% %LDLIBS% /OUT:%BUILDDIR%test.exe
 
 REM Copy Assets
-	xcopy /S /T /Y %SOURCEDIR%data %BUILDDIR% 
+	xcopy /S /Y %SOURCEDIR%data %BUILDDIR% 

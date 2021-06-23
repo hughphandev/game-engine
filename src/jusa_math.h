@@ -41,7 +41,6 @@ union v2
   inline bool operator<=(v2 a);
   inline bool operator<(v2 a);
   inline bool operator>(v2 a);
-  inline v2 operator=(float a);
   inline v2 operator*=(float a);
   inline v2 operator/=(float a);
   inline v2 operator+=(float a);
@@ -66,5 +65,30 @@ inline v2 operator/(v2 a, float b);
 inline v2 operator+(v2 a, float b);
 inline v2 operator-(v2 a, float b);
 inline v2 Abs(v2 v);
+
+union rec
+{
+  struct
+  {
+    v2 pos;
+    v2 size;
+  };
+  struct
+  {
+    float x, y, width, height;
+  };
+
+  inline v2 rec::GetMinBound()
+  {
+    //TODO: Test
+    return { this->pos.x - (this->width / 2.0f), this->pos.y - (this->height / 2.0f) };
+  }
+
+  inline v2 rec::GetMaxBound()
+  {
+    //TODO: Test
+    return { this->pos.x + (this->width / 2.0f), this->pos.y + (this->height / 2.0f) };
+  }
+};
 
 #endif

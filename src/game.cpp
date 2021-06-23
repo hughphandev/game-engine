@@ -3,22 +3,7 @@
 #include "jusa_intrinsics.h"
 #include "jusa_utils.h"
 #include "jusa_render.h"
-#include <stdlib.h>
 #include "jusa_random.h"
-
-
-v2 rec::GetMinBound()
-{
-  //TODO: Test
-  return { this->pos.x - (this->width / 2.0f), this->pos.y - (this->height / 2.0f) };
-}
-
-v2 rec::GetMaxBound()
-{
-  //TODO: Test
-  return { this->pos.x + (this->width / 2.0f), this->pos.y + (this->height / 2.0f) };
-}
-
 
 bool IsBoxOverlapping(rec a, rec b)
 {
@@ -146,7 +131,7 @@ void MoveAndSlide(entity* e, v2 motion, game_state* gameState, float timeStep)
   v2 moveLeft = {};
   v2 pos = hitbox->pos;
   game_world* world = &gameState->world;
-  entity* last = NULL;
+  entity* last = 0;
   v2 minContactNormal = {};
 
   do
@@ -190,7 +175,7 @@ void MoveAndSlide(entity* e, v2 motion, game_state* gameState, float timeStep)
     {
       moveBefore = motion;
       dp = moveBefore * timeStep;
-      moveLeft = 0.0f;
+      moveLeft = {};
     }
   } while (Abs(moveLeft) > 0.0001f);
 
@@ -216,34 +201,6 @@ static void InitMemoryArena(memory_arena* arena, size_t size, void* base)
   arena->used = 0;
 }
 
-inline rec GetTileBound(game_world* world, i32 x, i32 y)
-{
-  //NOTE: x, y start at top left corner!
-  //TODO: Test
-  rec result = {};
-
-  result.size = world->tileSizeInMeter;
-
-  v2 halfTileMapSizeInMeter = V2((float)world->tileCountX, (float)world->tileCountY) / 2.0f;
-
-  v2 tilePos = { (float)x, (float)(world->tileCountY - y - 1) };
-
-  result.pos = (tilePos - halfTileMapSizeInMeter) * world->tileSizeInMeter;
-
-  return result;
-}
-
-inline v2 GetTileIndex(game_world* world, float x, float y)
-{
-  //TODO: Test
-  v2 halfTileCount = Round(0.5f * V2((float)world->tileCountX, (float)world->tileCountY));
-  return Round(V2(x, -y - 1) / world->tileSizeInMeter) + halfTileCount;
-}
-
-inline v2 GetTileIndex(game_world* world, v2 pos)
-{
-  return GetTileIndex(world, pos.x, pos.y);
-}
 
 #define RIFF_CODE(a, b, c, d) (((u32)(a) << 0) | ((u32)(b) << 8) | ((u32)(c) << 16) | ((u32)(d) << 24)) 
 enum
@@ -454,10 +411,12 @@ void DrawRectangle(game_offscreen_buffer* buffer, game_camera* cam, rec r, color
 
 inline void DrawTexture(game_offscreen_buffer* buffer, game_camera* cam, rec bound, loaded_bitmap* texture)
 {
-  if (texture == NULL)
+  if (texture == 0)
   {
+    DrawRectangle(buffer, cam, bound, { 1.0f, 1.0f, 1.0f, 1.0f });
     return;
   }
+
   v2 minBound = WorldPointToScreen(cam, bound.GetMinBound());
   v2 maxBound = WorldPointToScreen(cam, bound.GetMaxBound());
 
@@ -490,18 +449,18 @@ inline void DrawTexture(game_offscreen_buffer* buffer, game_camera* cam, rec bou
   }
 }
 
-entity* AddEntity(game_state* gameState, entity it)
+entity* AddEntity(game_state* gameState, entity* it)
 {
   ASSERT(gameState->entityCount <= ARRAY_COUNT(gameState->entities));
 
   entity* result = &gameState->entities[gameState->entityCount++];
-  *result = it;
+  *result = *it;
   return result;
 }
 
 void RemoveEntity(game_state* gameState, entity* it)
 {
-  ASSERT(it != NULL);
+  ASSERT(it != 0);
 
   size_t entityIndex = it - gameState->entities;
   size_t copySize = gameState->entityCount - entityIndex - 1;
@@ -519,14 +478,14 @@ struct level
   entity* entities;
 };
 
-void SaveLevel(game_state* gameState, char* fileName, debug_platform_write_file WriteFile)
+void SaveLevel(game_state* gameState, game_memory* mem, char* fileName)
 {
-  WriteFile(fileName, gameState->entityCount * sizeof(entity), gameState->entities);
+  mem->DEBUGPlatformWriteFile(fileName, gameState->entityCount * sizeof(entity), gameState->entities);
 }
 
-void LoadLevel(game_state* gameState, char* fileName, debug_platform_read_file ReadFile, debug_platform_free_memory FreeMemory)
+void LoadLevel(game_state* gameState, game_memory* mem, char* fileName)
 {
-  debug_read_file_result fileLevel = ReadFile(fileName);
+  debug_read_file_result fileLevel = mem->DEBUGPlatformReadFile(fileName);
   if (fileLevel.contentSize > 0)
   {
     entity* entities = (entity*)fileLevel.contents;
@@ -535,13 +494,13 @@ void LoadLevel(game_state* gameState, char* fileName, debug_platform_read_file R
     {
       gameState->entities[i] = entities[i];
     }
-    FreeMemory(entities);
+    mem->DEBUGPlatformFreeMemory(entities);
   }
 }
 
-void AddSound(game_state* gameState, game_memory* gameMemory, loaded_sound sound)
+void AddSound(game_state* gameState, game_memory* gameMemory, loaded_sound* sound)
 {
-  gameState->sounds[gameState->soundCount++] = sound;
+  gameState->sounds[gameState->soundCount++] = *sound;
 }
 
 void AddSound(game_state* gameState, game_memory* gameMemory, char* soundName)
@@ -549,111 +508,64 @@ void AddSound(game_state* gameState, game_memory* gameMemory, char* soundName)
   gameState->sounds[gameState->soundCount++] = DEBUGLoadWAV(gameState, gameMemory, soundName);
 }
 
-extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
+void LoadEntity(game_state* gameState, entity* it)
 {
-  game_state* gameState = (game_state*)gameMemory->permanentStorage;
-  if (!gameMemory->isInited)
+  for (size_t i = 0; i < gameState->activeEntityCount; ++i)
   {
-    InitMemoryArena(&gameState->arena, gameMemory->permanentStorageSize - sizeof(game_state), (u8*)gameMemory->permanentStorage + sizeof(game_state));
-
-    gameState->programMode = MODE_NORMAL;
-    // AddSound(gameState, gameMemory, "test.wav");
-
-    AddSound(gameState, gameMemory, "test.wav");
-
-    game_world* world = &gameState->world;
-    world->cam.pixelPerMeter = buffer->height / 20.0f;
-    world->cam.offSet = { buffer->width / 2.0f, buffer->height / 2.0f };
-
-    gameState->background = DEBUGLoadBMP(gameState, gameMemory, "test.bmp");
-
-    world->tileCountX = 512;
-    world->tileCountY = 512;
-    world->tileSizeInMeter = { 1.0f, 1.0f };
-
-    entity player = { 0.0f, 0.0f, 0.5f, 0.5f };
-    AddEntity(gameState, player);
-    gameState->playerIndex = gameState->entityCount - 1;
-
-    LoadLevel(gameState, "level_demo.level", gameMemory->DEBUGPlatformReadFile, gameMemory->DEBUGPlatformFreeMemory);
-
-    gameMemory->isInited = true;
+    if (it == gameState->activeEntities[i]) return;
   }
 
-  ClearBuffer(buffer, { 0.0f, 0.0f, 0.0f, 0.5f });
-
-  game_world* world = &gameState->world;
-  game_camera* cam = &world->cam;
-
-  //TODO: using if-else for now! change to state machine if needed.
-  if (gameState->programMode == MODE_NORMAL)
+  gameState->activeEntities[gameState->activeEntityCount++] = it;
+}
+void UnloadEntity(game_state* gameState, entity* it)
+{
+  for (size_t i = 0; i < gameState->activeEntityCount; ++i)
   {
-    if (input.escape.isDown && input.escape.halfTransitionCount == 1)
+    if (it == gameState->activeEntities[i])
     {
-      gameState->programMode = MODE_MENU;
-    }
-    if (input.f1.isDown && input.f1.halfTransitionCount == 1)
-    {
-      gameState->programMode = MODE_EDITOR;
-    }
-
-    entity* player = &gameState->entities[gameState->playerIndex];
-
-    v2 dir = { };
-    if (input.right.isDown)
-    {
-      dir.x += 1.0f;
-    }
-    if (input.up.isDown)
-    {
-      dir.y += 1.0f;
-    }
-    if (input.down.isDown)
-    {
-      dir.y -= 1.0f;
-    }
-    if (input.left.isDown)
-    {
-      dir.x -= 1.0f;
-    }
-    v2 playerAccel = dir.Normalize() * 50.0f;
-
-    if (input.space.isDown && input.space.halfTransitionCount == 1)
-    {
-      player->vel = player->vel.Normalize() * 30.0f;
-    }
-    else
-    {
-      player->vel += playerAccel * input.dt;
-    }
-
-    for (int i = 0; i < gameState->entityCount; ++i)
-    {
-      MoveAndSlide(&gameState->entities[i], gameState->entities[i].vel, gameState, input.dt);
-    }
-    player->vel -= 0.2f * player->vel;
-
-    for (int i = 0; i < gameState->entityCount; ++i)
-    {
-      DrawRectangle(buffer, cam, gameState->entities[i].hitbox, { 1.0f, 1.0f, 1.0f, 1.0f });
+      if (i < gameState->activeEntityCount - 1)
+      {
+        size_t copySize = (gameState->activeEntityCount - i - 1) * sizeof(gameState->activeEntities[0]);
+        Memcpy(&gameState->activeEntities[i], &gameState->activeEntities[i + 1], copySize);
+        --i;
+      }
+      gameState->activeEntityCount--;
     }
   }
-  else if (gameState->programMode == MODE_MENU)
-  {
-    if (input.escape.isDown && input.escape.halfTransitionCount == 1)
-    {
-      gameState->programMode = MODE_NORMAL;
-    }
-    DrawImage(buffer, &gameState->background);
-  }
-  else if (gameState->programMode == MODE_EDITOR)
-  {
-    if (input.escape.isDown && input.escape.halfTransitionCount == 1)
-    {
-      gameState->programMode = MODE_NORMAL;
+}
 
-      SaveLevel(gameState, "level_demo.level", gameMemory->DEBUGPlatformWriteFile);
+inline bool IsInChunk(entity* it, game_world* world, i32 chunkX, i32 chunkY)
+{
+  v2 chunk = GetChunk(it->hitbox.pos, world);
+  return ((i32)chunk.x == chunkX && (i32)chunk.y == chunkY);
+}
+
+void LoadChunk(game_state* gameState, i32 chunkX, i32 chunkY)
+{
+  for (size_t i = 0; i < gameState->entityCount; ++i)
+  {
+    if (IsInChunk(&gameState->entities[i], &gameState->world, chunkX, chunkY))
+    {
+      LoadEntity(gameState, &gameState->entities[i]);
     }
+  }
+}
+
+void UnloadChunk(game_state* gameState, i32 chunkX, i32 chunkY)
+{
+  for (size_t i = 0; i < gameState->entityCount; ++i)
+  {
+    if (IsInChunk(&gameState->entities[i], &gameState->world, chunkX, chunkY))
+    {
+      UnloadEntity(gameState, &gameState->entities[i]);
+    }
+  }
+}
+
+static void GameEditor(game_offscreen_buffer* buffer, game_state* gameState, game_input input)
+{
+    game_world *world = &gameState->world;
+    game_camera *cam = &gameState->cam;
     v2 pos = ScreenPointToWorld(cam, { (float)input.mouseX, (float)input.mouseY });
     v2 tileIndex = GetTileIndex(world, pos);
     rec tileBox = GetTileBound(world, (i32)tileIndex.x, (i32)tileIndex.y);
@@ -662,8 +574,11 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     if (input.mouseButtonState[0])
     {
+      //NOTE: Add wall
       entity it = {};
       it.hitbox = tileBox;
+      it.vp = &gameState->vp[0];
+      it.hp = 1;
 
       for (int i = 0; i < gameState->entityCount; ++i)
       {
@@ -673,7 +588,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         }
         else if (i == gameState->entityCount - 1)
         {
-          AddEntity(gameState, it);
+          AddEntity(gameState, &it);
         }
       }
     }
@@ -712,8 +627,168 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     for (int i = 0; i < gameState->entityCount; ++i)
     {
-      DrawRectangle(buffer, cam, gameState->entities[i].hitbox, { 1.0f, 1.0f, 1.0f, 1.0f });
+      if (gameState->entities[i].vp != 0)
+      {
+        DrawTexture(buffer, cam, gameState->entities[i].hitbox, gameState->entities[i].vp->pieces);
+      }
+      else
+      {
+        DrawRectangle(buffer, cam, gameState->entities[i].hitbox, { 1.0f, 1.0f, 1.0f, 1.0f });
+      }
     }
+
+}
+
+extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
+{
+  game_state* gameState = (game_state*)gameMemory->permanentStorage;
+  if (!gameMemory->isInited)
+  {
+    InitMemoryArena(&gameState->arena, gameMemory->permanentStorageSize - sizeof(game_state), (u8*)gameMemory->permanentStorage + sizeof(game_state));
+
+    gameState->programMode = MODE_NORMAL;
+    gameState->cam.viewDistance = 1;
+
+    AddSound(gameState, gameMemory, "test.wav");
+
+    game_world* world = &gameState->world;
+    gameState->cam.pixelPerMeter = buffer->height / 20.0f;
+    gameState->cam.offSet = { buffer->width / 2.0f, buffer->height / 2.0f };
+
+
+    world->tileCountX = 1024;
+    world->tileCountY = 1024;
+
+    world->tilesInChunk = { 16.0f, 16.0f };
+    world->tileSizeInMeter = { 1.0f, 1.0f };
+
+    entity player = { 0.0f, 0.0f, 0.5f, 0.5f };
+    player.vp = 0;
+    player.hp = 10;
+    gameState->player = AddEntity(gameState, &player);
+
+    LoadLevel(gameState, gameMemory, "level_demo.level");
+
+    v2 startedChunk = GetChunk(gameState->cam.pos, world);
+    gameState->cam.viewDistance = 1;
+    LoadChunk(gameState, (i32)startedChunk.x, (i32)startedChunk.y);
+
+    gameState->textures[0] = DEBUGLoadBMP(gameState, gameMemory, "wall_side_left.bmp");
+    gameState->vp[0].pieces = &gameState->textures[0];
+    gameState->vp[0].pieceCount = 1;
+
+    gameMemory->isInited = true;
+  }
+
+  ClearBuffer(buffer, { 0.0f, 0.0f, 0.0f, 0.5f });
+
+  game_world* world = &gameState->world;
+  game_camera* cam = &gameState->cam;
+
+  //TODO: using if-else for now! change to state machine if needed.
+  if (gameState->programMode == MODE_NORMAL)
+  {
+    if (input.escape.isDown && input.escape.halfTransitionCount == 1)
+    {
+      gameState->programMode = MODE_MENU;
+    }
+    if (input.f1.isDown && input.f1.halfTransitionCount == 1)
+    {
+      gameState->programMode = MODE_EDITOR;
+    }
+
+    entity* player = gameState->player;
+
+    v2 dir = {};
+
+    if (input.left.isDown)
+    {
+      dir.x -= 1;
+    }
+    if (input.right.isDown)
+    {
+      dir.x += 1;
+    }
+    if (input.up.isDown)
+    {
+      dir.y += 1;
+    }
+    if (input.down.isDown)
+    {
+      dir.y -= 1;
+    }
+
+    v2 playerAccel = dir.Normalize() * 50.0f;
+
+    if (input.space.isDown && input.space.halfTransitionCount == 1)
+    {
+      player->vel = player->vel.Normalize() * 30.0f;
+    }
+    else
+    {
+      player->vel += playerAccel * input.dt;
+    }
+
+    for (int i = 0; i < gameState->activeEntityCount; ++i)
+    {
+      if(gameState->activeEntities[i]->hp <= 0.0f)
+      {
+        RemoveEntity(gameState, gameState->activeEntities[i]);
+      }
+      MoveAndSlide(gameState->activeEntities[i], gameState->activeEntities[i]->vel, gameState, input.dt);
+    }
+    player->vel -= 0.2f * player->vel;
+    cam->pos = player->hitbox.pos;
+
+    v2 currentChunk = GetChunk(cam->pos, world);
+    for (size_t i = 0; i < gameState->entityCount; ++i)
+    {
+      if (Abs(GetChunk(gameState->entities[i].hitbox.pos, world) - currentChunk) <= (float)cam->viewDistance)
+      {
+        LoadEntity(gameState, &gameState->entities[i]);
+      }
+      else
+      {
+        UnloadEntity(gameState, &gameState->entities[i]);
+      }
+    }
+
+    for (int i = 0; i < gameState->activeEntityCount; ++i)
+    {
+      if (gameState->activeEntities[i]->vp != 0)
+      {
+        DrawTexture(buffer, cam, gameState->activeEntities[i]->hitbox, gameState->activeEntities[i]->vp->pieces);
+      }
+      else
+      {
+        DrawRectangle(buffer, cam, gameState->activeEntities[i]->hitbox, { 1.0f, 1.0f, 1.0f, 1.0f });
+      }
+    }
+  }
+  else if (gameState->programMode == MODE_MENU)
+  {
+    if (input.escape.isDown && input.escape.halfTransitionCount == 1)
+    {
+      gameState->programMode = MODE_NORMAL;
+    }
+    DrawImage(buffer, &gameState->textures[1]);
+  }
+  else if (gameState->programMode == MODE_EDITOR)
+  {
+    if (input.escape.isDown && input.escape.halfTransitionCount == 1)
+    {
+      gameState->programMode = MODE_NORMAL;
+
+      SaveLevel(gameState, gameMemory, "level_demo.level");
+    }
+
+    GameEditor(buffer, gameState, input);
+  }
+
+
+  if (input.f3.isDown && input.f3.halfTransitionCount == 1)
+  {
+    gameState->isMuted = !gameState->isMuted;
   }
 }
 
@@ -753,5 +828,8 @@ extern "C" GAME_OUTPUT_SOUND(GameOutputSound)
 {
   game_state* gameState = (game_state*)gameMemory->permanentStorage;
 
-  PlaySound(soundBuffer, &gameState->sounds[0]);
+  if (!gameState->isMuted)
+  {
+    PlaySound(soundBuffer, &gameState->sounds[0]);
+  }
 }

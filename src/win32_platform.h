@@ -40,7 +40,6 @@ struct win32_offscreen_buffer
 	v2 offSet;
 };
 
-// NOTE: considering adding bytesPerSample to simplify calculation;
 struct win32_sound_output
 {
 	uint32_t blockIndex;

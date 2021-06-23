@@ -1,8 +1,7 @@
 #ifndef GAME_H
 #define GAME_H
 
-#include "jusa_math.h"
-#include "jusa_types.h"
+#include "jusa_world.h"
 
 #if INTERNAL
 struct debug_read_file_result
@@ -10,7 +9,6 @@ struct debug_read_file_result
   void* contents;
   u32 contentSize;
 };
-
 
 #define DEBUG_PLATFORM_READ_FILE(name) debug_read_file_result name(char* fileName)
 typedef DEBUG_PLATFORM_READ_FILE(debug_platform_read_file);
@@ -51,7 +49,7 @@ struct game_input
   // button
   union
   {
-    button_state buttons[7];
+    button_state buttons[8];
     struct
     {
       button_state up;
@@ -61,6 +59,7 @@ struct game_input
       button_state escape;
       button_state space;
       button_state f1;
+      button_state f3;
     };
   };
 
@@ -72,26 +71,11 @@ struct game_input
   float dt;
 }; // TODO: Clean up
 
-union rec
-{
-  struct
-  {
-    v2 pos;
-    v2 size;
-  };
-  struct
-  {
-    float x, y, width, height;
-  };
-
-  inline v2 GetMinBound();
-  inline v2 GetMaxBound();
-};
-
 struct game_camera
 {
   v2 offSet;
   v2 pos;
+  size_t viewDistance;
 
   float pixelPerMeter;
 };
@@ -120,20 +104,22 @@ struct memory_arena
   size_t size;
 };
 
-struct game_world
+struct visible_pieces
 {
-  game_camera cam;
-
-  u32 tileCountX;
-  u32 tileCountY;
-  v2 tileSizeInMeter;
+  loaded_bitmap* pieces;
+  size_t pieceCount;
 };
 
 struct entity
 {
   rec hitbox;
   v2 vel;
+
+  visible_pieces* vp;
+
+  float hp;
 };
+
 enum program_mode
 {
   MODE_NORMAL,
@@ -141,18 +127,34 @@ enum program_mode
   MODE_MENU
 };
 
+struct sprite_sheet
+{
+  loaded_bitmap sheet;
+  v2 chunkSize;
+};
+
 struct game_state
 {
   memory_arena arena;
+  game_camera cam;
   game_world world;
 
   entity entities[100000];
-  i32 entityCount;
-  i32 playerIndex;
+  size_t entityCount;
 
-  loaded_bitmap background;
+  //TODO: use reference for now, change to copy if too much cache miss!
+  entity* activeEntities[255];
+  size_t activeEntityCount;
+
+  entity* player;
+
+  //TODO: Asset loader
+  visible_pieces vp[10];
+
+  loaded_bitmap textures[10];
   loaded_sound sounds[10];
   size_t soundCount;
+  bool isMuted;
   program_mode programMode;
 };
 

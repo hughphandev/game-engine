@@ -216,7 +216,6 @@ static void Win32BufferToWindow(HDC deviceContext, win32_offscreen_buffer* buffe
 void Win32InitDSound(HWND window, int32_t samplesPerSecond, int32_t bufferSize)
 {
   HMODULE dSoundLibrary = LoadLibraryA("dsound.dll");
-
   if (dSoundLibrary)
   {
     direct_sound_create* DirectSoundCreate =
@@ -393,7 +392,7 @@ void Win32FillSoundBuffer(win32_sound_output* soundOutput, DWORD writePosition,
   {
     int16_t* sampleOut = (int16_t*)region1;
     int16_t* source = sourceBuffer->samples;
-    DWORD region1BlockCount = region1Size / soundOutput->bytesPerBlock ;
+    DWORD region1BlockCount = region1Size / soundOutput->bytesPerBlock;
     for (DWORD i = 0; i < region1BlockCount; ++i)
     {
       *sampleOut++ = *source++;
@@ -556,7 +555,6 @@ static void Win32ProcessPendingMessages(game_input* input, win32_state* win32Sta
       case WM_KEYDOWN:
       case WM_KEYUP:
       {
-        //TODO: handle subframe input
         bool wasDown = ((msg.lParam & (1 << 30)) != 0);
         bool isDown = ((msg.lParam & (1 << 31)) == 0);
 
@@ -589,6 +587,10 @@ static void Win32ProcessPendingMessages(game_input* input, win32_state* win32Sta
           if (msg.wParam == VK_F1)
           {
             Win32ProcessKeyboardInput(&input->f1, isDown);
+          }
+          if (msg.wParam == VK_F3)
+          {
+            Win32ProcessKeyboardInput(&input->f3, isDown);
           }
 
           if (msg.wParam == 'K' && isDown)
@@ -808,11 +810,10 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
   windowClass.style = CS_HREDRAW | CS_VREDRAW;
   windowClass.lpfnWndProc = MainWindowCallback;
   windowClass.hInstance = instance;
-  // windowClass.hCursor = LoadCursor(0, IDC_ARROW);
-  g_Cursor = LoadCursor(0, IDC_ARROW);
-  g_IsCursorDisplay = true;
   // windowClass.hIcon = ;
   windowClass.lpszClassName = "MainClass";
+  g_Cursor = LoadCursor(0, IDC_ARROW);
+  g_IsCursorDisplay = true;
 
   if (RegisterClassA(&windowClass))
   {

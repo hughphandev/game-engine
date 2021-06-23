@@ -192,10 +192,6 @@ inline bool v2::operator>(v2 a)
   return (this->x > a.x && this->y > a.y);
 }
 
-inline v2 v2::operator=(float a)
-{
-  return { a, a };
-}
 inline v2 v2::operator*=(float a)
 {
   return { this->x *= a, this->y *= a };
@@ -226,7 +222,7 @@ inline bool v2::operator<=(float a)
 }
 inline bool v2::operator<(float a)
 {
-  return (this->x < a&& this->y < a);
+  return (this->x < a && this->y < a);
 }
 inline bool v2::operator>(float a)
 {
@@ -237,5 +233,6 @@ inline v2 Abs(v2 v)
 {
   return { Abs(v.x), Abs(v.y) };
 }
+
 
 #endif
