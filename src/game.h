@@ -112,7 +112,15 @@ struct visible_pieces
 
 struct entity
 {
-  rec hitbox;
+  union
+  {
+    struct
+    {
+      v2 pos;
+      v2 size;
+    };
+    rec hitbox;
+  };
   v2 vel;
 
   visible_pieces* vp;
@@ -139,7 +147,8 @@ struct game_state
   game_camera cam;
   game_world world;
 
-  entity entities[100000];
+#define MAX_ENTITY_COUNT 100000
+  entity entities[MAX_ENTITY_COUNT];
   size_t entityCount;
 
   //TODO: use reference for now, change to copy if too much cache miss!

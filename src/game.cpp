@@ -365,12 +365,6 @@ void ClearBuffer(game_offscreen_buffer* buffer, color c)
   }
 }
 
-enum brush_type
-{
-  BRUSH_FILL,
-  BRUSH_WIREFRAME
-};
-
 void DrawRectangle(game_offscreen_buffer* buffer, game_camera* cam, rec r, color c, brush_type brush = BRUSH_FILL)
 {
   v2 minBound = WorldPointToScreen(cam, r.GetMinBound());
@@ -449,9 +443,46 @@ inline void DrawTexture(game_offscreen_buffer* buffer, game_camera* cam, rec bou
   }
 }
 
+void LoadEntity(game_state* gameState, entity* it)
+{
+  for (size_t i = 0; i < gameState->activeEntityCount; ++i)
+  {
+    if (it == gameState->activeEntities[i]) return;
+  }
+
+  gameState->activeEntities[gameState->activeEntityCount++] = it;
+}
+
+void UnloadEntity(game_state* gameState, entity* it)
+{
+  for (size_t i = 0; i < gameState->activeEntityCount; ++i)
+  {
+    if (it == gameState->activeEntities[i])
+    {
+      if (i < gameState->activeEntityCount - 1)
+      {
+        size_t copySize = (gameState->activeEntityCount - i - 1) * sizeof(gameState->activeEntities[0]);
+        Memcpy(&gameState->activeEntities[i], &gameState->activeEntities[i + 1], copySize);
+        --i;
+      }
+      gameState->activeEntityCount--;
+    }
+  }
+}
+
 entity* AddEntity(game_state* gameState, entity* it)
 {
   ASSERT(gameState->entityCount <= ARRAY_COUNT(gameState->entities));
+
+  for (int i = 0; i < gameState->entityCount; ++i)
+  {
+    if (gameState->entities[i].size == 0)
+    {
+      entity* result = &gameState->entities[i];
+      *result = *it;
+      return result;
+    }
+  }
 
   entity* result = &gameState->entities[gameState->entityCount++];
   *result = *it;
@@ -461,15 +492,10 @@ entity* AddEntity(game_state* gameState, entity* it)
 void RemoveEntity(game_state* gameState, entity* it)
 {
   ASSERT(it != 0);
+  ASSERT(gameState->entityCount < MAX_ENTITY_COUNT);
 
-  size_t entityIndex = it - gameState->entities;
-  size_t copySize = gameState->entityCount - entityIndex - 1;
-  entity* next = it + 1;
-  if (copySize > 0)
-  {
-    Memcpy(it, next, copySize * sizeof(*it));
-  }
-  --gameState->entityCount;
+  *it = {};
+  UnloadEntity(gameState, it);
 }
 
 struct level
@@ -508,31 +534,6 @@ void AddSound(game_state* gameState, game_memory* gameMemory, char* soundName)
   gameState->sounds[gameState->soundCount++] = DEBUGLoadWAV(gameState, gameMemory, soundName);
 }
 
-void LoadEntity(game_state* gameState, entity* it)
-{
-  for (size_t i = 0; i < gameState->activeEntityCount; ++i)
-  {
-    if (it == gameState->activeEntities[i]) return;
-  }
-
-  gameState->activeEntities[gameState->activeEntityCount++] = it;
-}
-void UnloadEntity(game_state* gameState, entity* it)
-{
-  for (size_t i = 0; i < gameState->activeEntityCount; ++i)
-  {
-    if (it == gameState->activeEntities[i])
-    {
-      if (i < gameState->activeEntityCount - 1)
-      {
-        size_t copySize = (gameState->activeEntityCount - i - 1) * sizeof(gameState->activeEntities[0]);
-        Memcpy(&gameState->activeEntities[i], &gameState->activeEntities[i + 1], copySize);
-        --i;
-      }
-      gameState->activeEntityCount--;
-    }
-  }
-}
 
 inline bool IsInChunk(entity* it, game_world* world, i32 chunkX, i32 chunkY)
 {
@@ -564,78 +565,78 @@ void UnloadChunk(game_state* gameState, i32 chunkX, i32 chunkY)
 
 static void GameEditor(game_offscreen_buffer* buffer, game_state* gameState, game_input input)
 {
-    game_world *world = &gameState->world;
-    game_camera *cam = &gameState->cam;
-    v2 pos = ScreenPointToWorld(cam, { (float)input.mouseX, (float)input.mouseY });
-    v2 tileIndex = GetTileIndex(world, pos);
-    rec tileBox = GetTileBound(world, (i32)tileIndex.x, (i32)tileIndex.y);
+  game_world* world = &gameState->world;
+  game_camera* cam = &gameState->cam;
+  v2 pos = ScreenPointToWorld(cam, { (float)input.mouseX, (float)input.mouseY });
+  v2 tileIndex = GetTileIndex(world, pos);
+  rec tileBox = GetTileBound(world, (i32)tileIndex.x, (i32)tileIndex.y);
 
-    DrawRectangle(buffer, cam, tileBox, { 1.0f, 1.0f, 1.0f, 1.0f }, BRUSH_WIREFRAME);
+  DrawRectangle(buffer, cam, tileBox, { 1.0f, 1.0f, 1.0f, 1.0f }, BRUSH_WIREFRAME);
 
-    if (input.mouseButtonState[0])
-    {
-      //NOTE: Add wall
-      entity it = {};
-      it.hitbox = tileBox;
-      it.vp = &gameState->vp[0];
-      it.hp = 1;
-
-      for (int i = 0; i < gameState->entityCount; ++i)
-      {
-        if (IsBoxOverlapping(it.hitbox, gameState->entities[i].hitbox))
-        {
-          break;
-        }
-        else if (i == gameState->entityCount - 1)
-        {
-          AddEntity(gameState, &it);
-        }
-      }
-    }
-    else if (input.mouseButtonState[1])
-    {
-      rec eraser = {};
-      eraser.size = { 0.5f, 0.5f };
-      eraser.pos = ScreenPointToWorld(cam, { (float)input.mouseX, (float)input.mouseY });
-      for (int i = 0; i < gameState->entityCount; ++i)
-      {
-        if (IsBoxOverlapping(eraser, gameState->entities[i].hitbox))
-        {
-          RemoveEntity(gameState, &gameState->entities[i]);
-        }
-      }
-    }
-
-    v2 dir = { };
-    if (input.right.isDown)
-    {
-      dir.x += 1.0f;
-    }
-    if (input.up.isDown)
-    {
-      dir.y += 1.0f;
-    }
-    if (input.down.isDown)
-    {
-      dir.y -= 1.0f;
-    }
-    if (input.left.isDown)
-    {
-      dir.x -= 1.0f;
-    }
-    cam->pos += dir.Normalize() * 10.0f * input.dt;
+  if (input.mouseButtonState[0])
+  {
+    //NOTE: Add wall
+    entity it = {};
+    it.hitbox = tileBox;
+    it.vp = &gameState->vp[0];
+    it.hp = 1;
 
     for (int i = 0; i < gameState->entityCount; ++i)
     {
-      if (gameState->entities[i].vp != 0)
+      if (IsBoxOverlapping(it.hitbox, gameState->entities[i].hitbox))
       {
-        DrawTexture(buffer, cam, gameState->entities[i].hitbox, gameState->entities[i].vp->pieces);
+        break;
       }
-      else
+      else if (i == gameState->entityCount - 1)
       {
-        DrawRectangle(buffer, cam, gameState->entities[i].hitbox, { 1.0f, 1.0f, 1.0f, 1.0f });
+        AddEntity(gameState, &it);
       }
     }
+  }
+  else if (input.mouseButtonState[1])
+  {
+    rec eraser = {};
+    eraser.size = { 0.5f, 0.5f };
+    eraser.pos = ScreenPointToWorld(cam, { (float)input.mouseX, (float)input.mouseY });
+    for (int i = 0; i < gameState->entityCount; ++i)
+    {
+      if (IsBoxOverlapping(eraser, gameState->entities[i].hitbox))
+      {
+        RemoveEntity(gameState, &gameState->entities[i]);
+      }
+    }
+  }
+
+  v2 dir = { };
+  if (input.right.isDown)
+  {
+    dir.x += 1.0f;
+  }
+  if (input.up.isDown)
+  {
+    dir.y += 1.0f;
+  }
+  if (input.down.isDown)
+  {
+    dir.y -= 1.0f;
+  }
+  if (input.left.isDown)
+  {
+    dir.x -= 1.0f;
+  }
+  cam->pos += dir.Normalize() * 10.0f * input.dt;
+
+  for (int i = 0; i < gameState->entityCount; ++i)
+  {
+    if (gameState->entities[i].vp != 0)
+    {
+      DrawTexture(buffer, cam, gameState->entities[i].hitbox, gameState->entities[i].vp->pieces);
+    }
+    else
+    {
+      DrawRectangle(buffer, cam, gameState->entities[i].hitbox, { 1.0f, 1.0f, 1.0f, 1.0f });
+    }
+  }
 
 }
 
@@ -729,13 +730,24 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       player->vel += playerAccel * input.dt;
     }
 
+    v2 mousePos = ScreenPointToWorld(cam, { (float)input.mouseX, (float)input.mouseY });
+    v2 attackOffset = (mousePos - player->hitbox.pos).Normalize();
+    rec attackRange = { player->pos + attackOffset, {1.0f, 1.0f} };
+
+
     for (int i = 0; i < gameState->activeEntityCount; ++i)
     {
-      if(gameState->activeEntities[i]->hp <= 0.0f)
+      entity* currentEntity = gameState->activeEntities[i];
+
+      if (input.mouseButtonState[0] && IsBoxOverlapping(attackRange, currentEntity->hitbox) && currentEntity != player)
       {
-        RemoveEntity(gameState, gameState->activeEntities[i]);
+        --currentEntity->hp;
       }
-      MoveAndSlide(gameState->activeEntities[i], gameState->activeEntities[i]->vel, gameState, input.dt);
+      if (gameState->activeEntities[i]->hp <= 0.0f)
+      {
+        RemoveEntity(gameState, currentEntity);
+      }
+      MoveAndSlide(gameState->activeEntities[i], currentEntity->vel, gameState, input.dt);
     }
     player->vel -= 0.2f * player->vel;
     cam->pos = player->hitbox.pos;

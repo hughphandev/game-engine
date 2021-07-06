@@ -5,6 +5,12 @@
 #include "jusa_math.h"
 #include "jusa_utils.h"
 
+enum brush_type
+{
+  BRUSH_FILL,
+  BRUSH_WIREFRAME
+};
+
 struct color
 {
   float r, g, b, a;
