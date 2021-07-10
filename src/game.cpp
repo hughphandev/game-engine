@@ -2,8 +2,9 @@
 #include "jusa_math.cpp"
 #include "jusa_intrinsics.h"
 #include "jusa_utils.h"
-#include "jusa_render.h"
-#include "jusa_random.h"
+#include "jusa_render.cpp"
+#include "jusa_random.cpp"
+#include "jusa_world.cpp"
 
 bool IsBoxOverlapping(rec a, rec b)
 {
@@ -121,7 +122,12 @@ ray_cast_hit RayToRec(v2 rayOrigin, v2 rayVec, rec r)
 
 void MoveAndSlide(entity* e, v2 motion, game_state* gameState, float timeStep)
 {
-  if (Abs(motion) < 0.0001f) return;
+  if (!e->canUpdate || Abs(motion) < 0.0001f) return;
+  if (!e->canCollide)
+  {
+    e->pos += e->vel * timeStep;
+    return;
+  }
 
   //TODO: solution for world boundary
   v2 orgMotion = motion;
@@ -130,7 +136,6 @@ void MoveAndSlide(entity* e, v2 motion, game_state* gameState, float timeStep)
   v2 moveBefore = {};
   v2 moveLeft = {};
   v2 pos = hitbox->pos;
-  game_world* world = &gameState->world;
   entity* last = 0;
   v2 minContactNormal = {};
 
@@ -141,7 +146,7 @@ void MoveAndSlide(entity* e, v2 motion, game_state* gameState, float timeStep)
     for (i32 i = 0; i < gameState->entityCount; ++i)
     {
       rec current = gameState->entities[i].hitbox;
-      if (e->hitbox.pos == current.pos) continue;
+      if (!gameState->entities[i].canCollide || e->hitbox.pos == current.pos) continue;
 
       rec imRec = { current.pos,  current.size + e->hitbox.size };
 
@@ -184,7 +189,7 @@ void MoveAndSlide(entity* e, v2 motion, game_state* gameState, float timeStep)
 }
 
 #define PUSH_ARRAY(pool, type, count) (type*)PushSize_(pool, sizeof(type) * (count))
-#define PUSH_TYPE(pool, type) (type*)PushSize_(pool, sizeof((type))
+#define PUSH_TYPE(pool, type) (type*)PushSize_(pool, sizeof(type))
 static void* PushSize_(memory_arena* pool, size_t bytes)
 {
   ASSERT((pool->size - pool->used) >= bytes);
@@ -411,6 +416,8 @@ inline void DrawTexture(game_offscreen_buffer* buffer, game_camera* cam, rec bou
     return;
   }
 
+  bound.pos += texture->anchor * bound.size;
+
   v2 minBound = WorldPointToScreen(cam, bound.GetMinBound());
   v2 maxBound = WorldPointToScreen(cam, bound.GetMaxBound());
 
@@ -443,31 +450,18 @@ inline void DrawTexture(game_offscreen_buffer* buffer, game_camera* cam, rec bou
   }
 }
 
-void LoadEntity(game_state* gameState, entity* it)
+void LoadEntity(game_state* gameState, memory_arena* entityArena, entity* it)
 {
-  for (size_t i = 0; i < gameState->activeEntityCount; ++i)
+  size_t entityCount = entityArena->used / sizeof(it);
+  entity** active = (entity**)entityArena->base;
+  for (size_t i = 0; i < entityCount; ++i)
   {
-    if (it == gameState->activeEntities[i]) return;
+    //NOTE: 2 entities cant be in the same spots;
+    if (it->pos == active[i]->pos) return;
   }
 
-  gameState->activeEntities[gameState->activeEntityCount++] = it;
-}
-
-void UnloadEntity(game_state* gameState, entity* it)
-{
-  for (size_t i = 0; i < gameState->activeEntityCount; ++i)
-  {
-    if (it == gameState->activeEntities[i])
-    {
-      if (i < gameState->activeEntityCount - 1)
-      {
-        size_t copySize = (gameState->activeEntityCount - i - 1) * sizeof(gameState->activeEntities[0]);
-        Memcpy(&gameState->activeEntities[i], &gameState->activeEntities[i + 1], copySize);
-        --i;
-      }
-      gameState->activeEntityCount--;
-    }
-  }
+  entity** e = PUSH_TYPE(entityArena, entity*);
+  *e = it;
 }
 
 entity* AddEntity(game_state* gameState, entity* it)
@@ -494,8 +488,17 @@ void RemoveEntity(game_state* gameState, entity* it)
   ASSERT(it != 0);
   ASSERT(gameState->entityCount < MAX_ENTITY_COUNT);
 
-  *it = {};
-  UnloadEntity(gameState, it);
+  if (it == &gameState->entities[gameState->entityCount - 1])
+  {
+    --gameState->entityCount;
+  }
+  else
+  {
+    entity* last = &gameState->entities[gameState->entityCount - 1];
+    Memcpy(it, it + 1, (char*)last - (char*)it);
+    --gameState->entityCount;
+  }
+
 }
 
 struct level
@@ -541,28 +544,6 @@ inline bool IsInChunk(entity* it, game_world* world, i32 chunkX, i32 chunkY)
   return ((i32)chunk.x == chunkX && (i32)chunk.y == chunkY);
 }
 
-void LoadChunk(game_state* gameState, i32 chunkX, i32 chunkY)
-{
-  for (size_t i = 0; i < gameState->entityCount; ++i)
-  {
-    if (IsInChunk(&gameState->entities[i], &gameState->world, chunkX, chunkY))
-    {
-      LoadEntity(gameState, &gameState->entities[i]);
-    }
-  }
-}
-
-void UnloadChunk(game_state* gameState, i32 chunkX, i32 chunkY)
-{
-  for (size_t i = 0; i < gameState->entityCount; ++i)
-  {
-    if (IsInChunk(&gameState->entities[i], &gameState->world, chunkX, chunkY))
-    {
-      UnloadEntity(gameState, &gameState->entities[i]);
-    }
-  }
-}
-
 static void GameEditor(game_offscreen_buffer* buffer, game_state* gameState, game_input input)
 {
   game_world* world = &gameState->world;
@@ -578,8 +559,10 @@ static void GameEditor(game_offscreen_buffer* buffer, game_state* gameState, gam
     //NOTE: Add wall
     entity it = {};
     it.hitbox = tileBox;
-    it.vp = &gameState->vp[0];
+    it.vp = visible_pieces{ {gameState->textures[0]}, 1 };
     it.hp = 1;
+    it.type = ENTITY_WALL;
+    it.canCollide = true;
 
     for (int i = 0; i < gameState->entityCount; ++i)
     {
@@ -628,16 +611,21 @@ static void GameEditor(game_offscreen_buffer* buffer, game_state* gameState, gam
 
   for (int i = 0; i < gameState->entityCount; ++i)
   {
-    if (gameState->entities[i].vp != 0)
+    if (gameState->entities[i].vp.pieceCount != 0)
     {
-      DrawTexture(buffer, cam, gameState->entities[i].hitbox, gameState->entities[i].vp->pieces);
+      DrawTexture(buffer, cam, gameState->entities[i].hitbox, gameState->entities[i].vp.pieces);
     }
     else
     {
       DrawRectangle(buffer, cam, gameState->entities[i].hitbox, { 1.0f, 1.0f, 1.0f, 1.0f });
     }
   }
+}
 
+loaded_bitmap* AddTexture(game_state* gameState, char* fileName)
+{
+  //TODO: Utility function
+  return 0;
 }
 
 extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
@@ -663,23 +651,27 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     world->tilesInChunk = { 16.0f, 16.0f };
     world->tileSizeInMeter = { 1.0f, 1.0f };
 
-    entity player = { 0.0f, 0.0f, 0.5f, 0.5f };
-    player.vp = 0;
+    gameState->textures[1] = DEBUGLoadBMP(gameState, gameMemory, "knight_idle_anim_f0.bmp");
+    entity player = { 0.0f, 0.0f, 1.0f, 1.0f };
     player.hp = 10;
+    player.type = ENTITY_PLAYER;
+    player.vp.pieceCount = 1;
+    player.vp.pieces[0] = gameState->textures[1];
+    player.canCollide = true;
+    player.canUpdate = true;
     gameState->player = AddEntity(gameState, &player);
 
     LoadLevel(gameState, gameMemory, "level_demo.level");
 
-    v2 startedChunk = GetChunk(gameState->cam.pos, world);
     gameState->cam.viewDistance = 1;
-    LoadChunk(gameState, (i32)startedChunk.x, (i32)startedChunk.y);
 
     gameState->textures[0] = DEBUGLoadBMP(gameState, gameMemory, "wall_side_left.bmp");
-    gameState->vp[0].pieces = &gameState->textures[0];
-    gameState->vp[0].pieceCount = 1;
 
     gameMemory->isInited = true;
   }
+
+  memory_arena entityArena = {};
+  InitMemoryArena(&entityArena, gameMemory->transientStorageSize, gameMemory->transientStorage);
 
   ClearBuffer(buffer, { 0.0f, 0.0f, 0.0f, 0.5f });
 
@@ -697,6 +689,18 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     {
       gameState->programMode = MODE_EDITOR;
     }
+
+    v2 currentChunk = GetChunk(cam->pos, world);
+    for (size_t i = 0; i < gameState->entityCount; ++i)
+    {
+      if (Abs(GetChunk(gameState->entities[i].hitbox.pos, world) - currentChunk) <= (float)cam->viewDistance)
+      {
+        LoadEntity(gameState, &entityArena, &gameState->entities[i]);
+      }
+    }
+
+    entity** activeEntities = (entity**)entityArena.base;
+    size_t activeEntityCount = entityArena.used / sizeof(*activeEntities);
 
     entity* player = gameState->player;
 
@@ -735,45 +739,37 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     rec attackRange = { player->pos + attackOffset, {1.0f, 1.0f} };
 
 
-    for (int i = 0; i < gameState->activeEntityCount; ++i)
+    if (input.mouseButtonState[0])
     {
-      entity* currentEntity = gameState->activeEntities[i];
+      for (int i = 0; i < activeEntityCount; ++i)
+      {
+        if (IsBoxOverlapping(attackRange, activeEntities[i]->hitbox) && activeEntities[i] != player)
+        {
+          --activeEntities[i]->hp;
+        }
+      }
+    }
 
-      if (input.mouseButtonState[0] && IsBoxOverlapping(attackRange, currentEntity->hitbox) && currentEntity != player)
+    for (int i = 0; i < activeEntityCount; ++i)
+    {
+      if (activeEntities[i]->hp <= 0.0f)
       {
-        --currentEntity->hp;
+        RemoveEntity(gameState, activeEntities[i]);
       }
-      if (gameState->activeEntities[i]->hp <= 0.0f)
-      {
-        RemoveEntity(gameState, currentEntity);
-      }
-      MoveAndSlide(gameState->activeEntities[i], currentEntity->vel, gameState, input.dt);
+      MoveAndSlide(activeEntities[i], activeEntities[i]->vel, gameState, input.dt);
     }
     player->vel -= 0.2f * player->vel;
     cam->pos = player->hitbox.pos;
 
-    v2 currentChunk = GetChunk(cam->pos, world);
-    for (size_t i = 0; i < gameState->entityCount; ++i)
+    for (int i = 0; i < activeEntityCount;++i)
     {
-      if (Abs(GetChunk(gameState->entities[i].hitbox.pos, world) - currentChunk) <= (float)cam->viewDistance)
+      if (activeEntities[i]->vp.pieceCount != 0)
       {
-        LoadEntity(gameState, &gameState->entities[i]);
+        DrawTexture(buffer, cam, activeEntities[i]->hitbox, activeEntities[i]->vp.pieces);
       }
       else
       {
-        UnloadEntity(gameState, &gameState->entities[i]);
-      }
-    }
-
-    for (int i = 0; i < gameState->activeEntityCount; ++i)
-    {
-      if (gameState->activeEntities[i]->vp != 0)
-      {
-        DrawTexture(buffer, cam, gameState->activeEntities[i]->hitbox, gameState->activeEntities[i]->vp->pieces);
-      }
-      else
-      {
-        DrawRectangle(buffer, cam, gameState->activeEntities[i]->hitbox, { 1.0f, 1.0f, 1.0f, 1.0f });
+        DrawRectangle(buffer, cam, activeEntities[i]->hitbox, { 1.0f, 1.0f, 1.0f, 1.0f });
       }
     }
   }

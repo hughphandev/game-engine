@@ -85,6 +85,8 @@ struct loaded_bitmap
   u32* pixel;
   u32 width;
   u32 height;
+  
+  v2 anchor;
 };
 
 struct loaded_sound
@@ -106,8 +108,17 @@ struct memory_arena
 
 struct visible_pieces
 {
-  loaded_bitmap* pieces;
+  loaded_bitmap pieces[10];
   size_t pieceCount;
+};
+
+enum entity_type
+{
+  ENTITY_WALL,
+  ENTITY_MONSTAR,
+  ENTITY_PLAYER,
+  ENTITY_SWORD,
+  ENTITY_PROJECTILE
 };
 
 struct entity
@@ -123,9 +134,13 @@ struct entity
   };
   v2 vel;
 
-  visible_pieces* vp;
+  visible_pieces vp;
+  entity_type type;
 
   float hp;
+
+  bool canCollide;
+  bool canUpdate;
 };
 
 enum program_mode
@@ -151,14 +166,7 @@ struct game_state
   entity entities[MAX_ENTITY_COUNT];
   size_t entityCount;
 
-  //TODO: use reference for now, change to copy if too much cache miss!
-  entity* activeEntities[255];
-  size_t activeEntityCount;
-
   entity* player;
-
-  //TODO: Asset loader
-  visible_pieces vp[10];
 
   loaded_bitmap textures[10];
   loaded_sound sounds[10];
