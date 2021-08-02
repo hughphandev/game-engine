@@ -73,8 +73,8 @@ struct game_input
 
 struct game_camera
 {
-  v2 offSet;
-  v2 pos;
+  v3 offSet;
+  v3 pos;
   size_t viewDistance;
 
   float pixelPerMeter;
@@ -85,7 +85,7 @@ struct loaded_bitmap
   u32* pixel;
   u32 width;
   u32 height;
-  
+
   v2 anchor;
 };
 
@@ -123,16 +123,9 @@ enum entity_type
 
 struct entity
 {
-  union
-  {
-    struct
-    {
-      v2 pos;
-      v2 size;
-    };
-    rec hitbox;
-  };
-  v2 vel;
+  v3 pos;
+  v3 size;
+  v3 vel;
 
   visible_pieces vp;
   entity_type type;
@@ -141,6 +134,9 @@ struct entity
 
   bool canCollide;
   bool canUpdate;
+
+  entity* owner;
+  float lifeTime;
 };
 
 enum program_mode
@@ -247,6 +243,11 @@ struct game_memory
   debug_platform_write_file* DEBUGPlatformWriteFile;
 };
 
+struct level
+{
+  i32 entityCount;
+  entity* entities;
+};
 
 #define GAME_UPDATE_AND_RENDER(name) void name(game_memory* gameMemory, game_offscreen_buffer* buffer, game_input input)
 typedef GAME_UPDATE_AND_RENDER(game_update_and_render);

@@ -222,7 +222,7 @@ inline bool v2::operator<=(float a)
 }
 inline bool v2::operator<(float a)
 {
-  return (this->x < a && this->y < a);
+  return (this->x < a&& this->y < a);
 }
 inline bool v2::operator>(float a)
 {
@@ -234,5 +234,131 @@ inline v2 Abs(v2 v)
   return { Abs(v.x), Abs(v.y) };
 }
 
+inline v3 v3::operator*=(v3 a)
+{
+  return { this->x *= a.x, this->y *= a.y, this->z *= a.z };
+}
+inline v3 v3::operator/=(v3 a)
+{
+  return { this->x /= a.x, this->y /= a.y, this->z /= a.z };
+}
+inline v3 v3::operator+=(v3 a)
+{
+  return { this->x += a.x, this->y += a.y, this->z += a.z };
+}
+inline v3 v3::operator-=(v3 a)
+{
+  return { this->x -= a.x, this->y -= a.y, this->z -= a.z };
+}
+inline bool v3::operator==(v3 a)
+{
+  return (this->x == a.x && this->y == a.y && this->z == a.z);
+}
+inline bool v3::operator!=(v3 a)
+{
+  return (this->x != a.x || this->y != a.y && this->z != a.z);
+}
+inline bool v3::operator<=(v3 a)
+{
+  return (this->x <= a.x && this->y <= a.y && this->z <= a.z);
+}
+inline bool v3::operator<(v3 a)
+{
+  return (this->x < a.x&& this->y < a.y&& this->z < a.z);
+}
+inline bool v3::operator>(v3 a)
+{
+  return (this->x > a.x && this->y > a.y && this->z > a.z);
+}
 
+inline v3 v3::operator*=(float a)
+{
+  return { this->x *= a, this->y *= a, this->z *= a };
+}
+inline v3 v3::operator/=(float a)
+{
+  return { this->x /= a, this->y /= a, this->z /= a };
+}
+inline v3 v3::operator+=(float a)
+{
+  return { this->x += a, this->y += a, this->z += a };
+}
+inline v3 v3::operator-=(float a)
+{
+  return { this->x -= a, this->y -= a, this->z -= a };
+}
+inline bool v3::operator==(float a)
+{
+  return (this->x == a && this->y == a && this->z == a);
+}
+inline bool v3::operator!=(float a)
+{
+  return (this->x != a || this->y != a && this->z != a);
+}
+inline bool v3::operator<=(float a)
+{
+  return (this->x <= a && this->y <= a && this->z <= a);
+}
+inline bool v3::operator<(float a)
+{
+  return (this->x < a&& this->y < a&& this->z < a);
+}
+inline bool v3::operator>(float a)
+{
+  return (this->x > a && this->y > a && this->z > a);
+}
+
+inline v3 operator*(v3 a, float b)
+{
+  return { a.x * b, a.y * b, a.z * b };
+}
+inline v3 operator*(float a, v3 b)
+{
+  return b * a;
+}
+inline v3 operator/(v3 a, float b)
+{
+  return { a.x / b, a.y / b, a.z / b };
+}
+inline v3 operator+(v3 a, float b)
+{
+  return { a.x + b, a.y + b, a.z + b };
+}
+inline v3 operator-(v3 a, float b)
+{
+  return { a.x - b, a.y - b, a.z - b };
+}
+
+inline v3 operator*(v3 a, v3 b)
+{
+  return { a.x * b.x, a.y * b.y, a.z * b.z };
+}
+inline v3 operator/(v3 a, v3 b)
+{
+  return { a.x / b.x, a.y / b.y, a.z / b.z };
+}
+inline v3 operator+(v3 a, v3 b)
+{
+  return { a.x + b.x, a.y + b.y, a.z + b.z };
+}
+inline v3 operator-(v3 a, v3 b)
+{
+  return { a.x - b.x, a.y - b.y, a.z - b.z };
+}
+
+inline v3 v3::Normalize()
+{
+  if (*this == 0.0f) return {};
+  float rsqrtMagtitude = Q_rsqrt(Sqr(this->x) + Sqr(this->y) + Sqr(this->z));
+  return{ this->x * rsqrtMagtitude, this->y * rsqrtMagtitude , this->z * rsqrtMagtitude };
+}
+
+inline v3 V3(float x, float y, float z)
+{
+  return { x, y, z };
+}
+inline v3 V3(v2 xy, float z)
+{
+  return { xy.x, xy.y, z };
+}
 #endif

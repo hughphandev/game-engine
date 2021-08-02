@@ -80,12 +80,12 @@ ray_cast_hit RayToRec(v2 rayOrigin, v2 rayVec, rec r)
   if (tNear.x > tFar.x) Swap(&tNear.x, &tFar.x);
   if (tNear.y > tFar.y) Swap(&tNear.y, &tFar.y);
 
-  if (tNear.x >= tFar.y || tNear.y >= tFar.x) return result;
+  if (tNear.x > tFar.y || tNear.y > tFar.x) return result;
 
   result.t = Max(tNear.x, tNear.y);
   float tHitFar = Min(tFar.x, tFar.y);
 
-  if (tHitFar <= 0 || (result.t) >= 1.0f)
+  if (result.t < 0.0f || (result.t) > 1.0f)
   {
     result.isContact = false;
   }
@@ -120,7 +120,12 @@ ray_cast_hit RayToRec(v2 rayOrigin, v2 rayVec, rec r)
   return result;
 }
 
-void MoveAndSlide(entity* e, v2 motion, game_state* gameState, float timeStep)
+inline void MoveEntity(entity* it, v2 motion, float timeStep)
+{
+  it->pos.xy += motion * timeStep;
+}
+
+void MoveAndSlide(entity* e, v2 motion, entity* active[], size_t activeCount, float timeStep)
 {
   if (!e->canUpdate || Abs(motion) < 0.0001f) return;
   if (!e->canCollide)
@@ -131,11 +136,10 @@ void MoveAndSlide(entity* e, v2 motion, game_state* gameState, float timeStep)
 
   //TODO: solution for world boundary
   v2 orgMotion = motion;
-  rec* hitbox = &e->hitbox;
   v2 dp = {};
   v2 moveBefore = {};
   v2 moveLeft = {};
-  v2 pos = hitbox->pos;
+  v2 pos = e->pos.xy;
   entity* last = 0;
   v2 minContactNormal = {};
 
@@ -143,12 +147,11 @@ void MoveAndSlide(entity* e, v2 motion, game_state* gameState, float timeStep)
   {
     float tMin = 1.0f;
 
-    for (i32 i = 0; i < gameState->entityCount; ++i)
+    for (i32 i = 0; i < activeCount; ++i)
     {
-      rec current = gameState->entities[i].hitbox;
-      if (!gameState->entities[i].canCollide || e->hitbox.pos == current.pos) continue;
+      if (!active[i]->canCollide || e->pos == active[i]->pos) continue;
 
-      rec imRec = { current.pos,  current.size + e->hitbox.size };
+      rec imRec = { active[i]->pos.xy,  active[i]->size.xy + e->size.xy };
 
       ray_cast_hit rch = RayToRec(pos, motion * timeStep, imRec);
 
@@ -161,7 +164,7 @@ void MoveAndSlide(entity* e, v2 motion, game_state* gameState, float timeStep)
         {
           tMin = rch.t;
           minContactNormal = rch.cNormal;
-          last = &gameState->entities[i];
+          last = active[i];
         }
       }
     }
@@ -184,8 +187,8 @@ void MoveAndSlide(entity* e, v2 motion, game_state* gameState, float timeStep)
     }
   } while (Abs(moveLeft) > 0.0001f);
 
-  hitbox->pos += dp;
-  e->vel = (orgMotion - minContactNormal * Inner(minContactNormal, orgMotion));
+  e->pos.xy += dp;
+  e->vel.xy = (orgMotion - minContactNormal * Inner(minContactNormal, orgMotion));
 }
 
 #define PUSH_ARRAY(pool, type, count) (type*)PushSize_(pool, sizeof(type) * (count))
@@ -326,18 +329,18 @@ inline loaded_bitmap DEBUGLoadBMP(game_state* gameState, game_memory* mem, char*
 inline v2 WorldPointToScreen(game_camera* cam, v2 point)
 {
   //TODO: Test
-  v2 relPos = point - cam->pos;
+  v2 relPos = point - cam->pos.xy;
   v2 screenCoord = { relPos.x * (float)cam->pixelPerMeter, -relPos.y * (float)cam->pixelPerMeter };
-  return screenCoord + cam->offSet;
+  return screenCoord + cam->offSet.xy;
 }
 
 inline v2 ScreenPointToWorld(game_camera* cam, v2 point)
 {
   //TODO: Test
   //TODO: fix offset of the pointer to the top-left of the window or change mouseX, mouseY relative to the top-left of the window
-  v2 relPos = point - cam->offSet;
+  v2 relPos = point - cam->offSet.xy;
   v2 worldCoord = { relPos.x / (float)cam->pixelPerMeter, -relPos.y / (float)cam->pixelPerMeter };
-  return worldCoord + cam->pos;
+  return worldCoord + cam->pos.xy;
 }
 
 static void DrawImage(game_offscreen_buffer* buffer, loaded_bitmap* image)
@@ -485,8 +488,10 @@ entity* AddEntity(game_state* gameState, entity* it)
 
 void RemoveEntity(game_state* gameState, entity* it)
 {
-  ASSERT(it != 0);
-  ASSERT(gameState->entityCount < MAX_ENTITY_COUNT);
+  if (it == 0 || it < &gameState->entities[0] || it >= &gameState->entities[gameState->entityCount])
+  {
+    return;
+  }
 
   if (it == &gameState->entities[gameState->entityCount - 1])
   {
@@ -500,12 +505,6 @@ void RemoveEntity(game_state* gameState, entity* it)
   }
 
 }
-
-struct level
-{
-  i32 entityCount;
-  entity* entities;
-};
 
 void SaveLevel(game_state* gameState, game_memory* mem, char* fileName)
 {
@@ -540,7 +539,7 @@ void AddSound(game_state* gameState, game_memory* gameMemory, char* soundName)
 
 inline bool IsInChunk(entity* it, game_world* world, i32 chunkX, i32 chunkY)
 {
-  v2 chunk = GetChunk(it->hitbox.pos, world);
+  v2 chunk = GetChunk(it->pos.xy, world);
   return ((i32)chunk.x == chunkX && (i32)chunk.y == chunkY);
 }
 
@@ -558,15 +557,18 @@ static void GameEditor(game_offscreen_buffer* buffer, game_state* gameState, gam
   {
     //NOTE: Add wall
     entity it = {};
-    it.hitbox = tileBox;
+    it.pos.xy = tileBox.pos;
+    it.size.xy = tileBox.size;
     it.vp = visible_pieces{ {gameState->textures[0]}, 1 };
     it.hp = 1;
     it.type = ENTITY_WALL;
     it.canCollide = true;
+    rec hb = { it.pos.xy, it.size.xy };
 
     for (int i = 0; i < gameState->entityCount; ++i)
     {
-      if (IsBoxOverlapping(it.hitbox, gameState->entities[i].hitbox))
+      rec current = { gameState->entities[i].pos.xy, gameState->entities[i].size.xy };
+      if (IsBoxOverlapping(hb, current))
       {
         break;
       }
@@ -583,7 +585,8 @@ static void GameEditor(game_offscreen_buffer* buffer, game_state* gameState, gam
     eraser.pos = ScreenPointToWorld(cam, { (float)input.mouseX, (float)input.mouseY });
     for (int i = 0; i < gameState->entityCount; ++i)
     {
-      if (IsBoxOverlapping(eraser, gameState->entities[i].hitbox))
+      rec current = { gameState->entities[i].pos.xy, gameState->entities[i].size.xy };
+      if (IsBoxOverlapping(eraser, current))
       {
         RemoveEntity(gameState, &gameState->entities[i]);
       }
@@ -607,17 +610,18 @@ static void GameEditor(game_offscreen_buffer* buffer, game_state* gameState, gam
   {
     dir.x -= 1.0f;
   }
-  cam->pos += dir.Normalize() * 10.0f * input.dt;
+  cam->pos.xy += dir.Normalize() * 10.0f * input.dt;
 
   for (int i = 0; i < gameState->entityCount; ++i)
   {
+    rec currentHB = {gameState->entities[i].pos.xy, gameState->entities[i].size.xy};
     if (gameState->entities[i].vp.pieceCount != 0)
     {
-      DrawTexture(buffer, cam, gameState->entities[i].hitbox, gameState->entities[i].vp.pieces);
+      DrawTexture(buffer, cam, currentHB, gameState->entities[i].vp.pieces);
     }
     else
     {
-      DrawRectangle(buffer, cam, gameState->entities[i].hitbox, { 1.0f, 1.0f, 1.0f, 1.0f });
+      DrawRectangle(buffer, cam, currentHB, { 1.0f, 1.0f, 1.0f, 1.0f });
     }
   }
 }
@@ -626,6 +630,57 @@ loaded_bitmap* AddTexture(game_state* gameState, char* fileName)
 {
   //TODO: Utility function
   return 0;
+}
+
+void UpdateEntity(game_state* gameState, entity* it, entity* active[], size_t activeCount, float timeStep)
+{
+  rec itHB = { it->pos.xy, it->size.xy };
+  switch (it->type)
+  {
+    case ENTITY_PLAYER:
+    {
+      MoveAndSlide(it, it->vel.xy, active, activeCount, timeStep);
+    } break;
+    case ENTITY_SWORD:
+    {
+      it->pos += it->owner->pos;
+      for (size_t i = 0; i < activeCount; ++i)
+      {
+        rec currentHB = { active[i]->pos.xy, active[i]->size.xy };
+        if (it->owner != active[i] && it != active[i] && IsBoxOverlapping(itHB, currentHB))
+        {
+          --active[i]->hp;
+        }
+      }
+    } break;
+    case ENTITY_PROJECTILE:
+    {
+      it->pos += it->vel * timeStep;
+      it->lifeTime -= timeStep;
+      for (size_t i = 0; i < activeCount; ++i)
+      {
+        rec currentHB = { active[i]->pos.xy, active[i]->size.xy };
+        if (it->owner != active[i] && it->owner != active[i]->owner && it != active[i] && IsBoxOverlapping(itHB, currentHB))
+        {
+          --active[i]->hp;
+        }
+      }
+
+      if (it->lifeTime <= 0)
+      {
+        RemoveEntity(gameState, it);
+      }
+
+    } break;
+
+    default:
+      break;
+  }
+
+  if (it->hp <= 0.0f)
+  {
+    RemoveEntity(gameState, it);
+  }
 }
 
 extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
@@ -644,7 +699,6 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     gameState->cam.pixelPerMeter = buffer->height / 20.0f;
     gameState->cam.offSet = { buffer->width / 2.0f, buffer->height / 2.0f };
 
-
     world->tileCountX = 1024;
     world->tileCountY = 1024;
 
@@ -652,7 +706,8 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     world->tileSizeInMeter = { 1.0f, 1.0f };
 
     gameState->textures[1] = DEBUGLoadBMP(gameState, gameMemory, "knight_idle_anim_f0.bmp");
-    entity player = { 0.0f, 0.0f, 1.0f, 1.0f };
+    entity player = {};
+    player.size.xy = {0.9f, 0.9f};
     player.hp = 10;
     player.type = ENTITY_PLAYER;
     player.vp.pieceCount = 1;
@@ -678,7 +733,6 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   game_world* world = &gameState->world;
   game_camera* cam = &gameState->cam;
 
-  //TODO: using if-else for now! change to state machine if needed.
   if (gameState->programMode == MODE_NORMAL)
   {
     if (input.escape.isDown && input.escape.halfTransitionCount == 1)
@@ -690,10 +744,10 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       gameState->programMode = MODE_EDITOR;
     }
 
-    v2 currentChunk = GetChunk(cam->pos, world);
+    v2 currentChunk = GetChunk(cam->pos.xy, world);
     for (size_t i = 0; i < gameState->entityCount; ++i)
     {
-      if (Abs(GetChunk(gameState->entities[i].hitbox.pos, world) - currentChunk) <= (float)cam->viewDistance)
+      if (Abs(GetChunk(gameState->entities[i].pos.xy, world) - currentChunk) <= (float)cam->viewDistance)
       {
         LoadEntity(gameState, &entityArena, &gameState->entities[i]);
       }
@@ -731,45 +785,60 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     }
     else
     {
-      player->vel += playerAccel * input.dt;
+      player->vel.xy += playerAccel * input.dt;
     }
 
-    v2 mousePos = ScreenPointToWorld(cam, { (float)input.mouseX, (float)input.mouseY });
-    v2 attackOffset = (mousePos - player->hitbox.pos).Normalize();
-    rec attackRange = { player->pos + attackOffset, {1.0f, 1.0f} };
 
-
+    entity sword = {};
     if (input.mouseButtonState[0])
     {
-      for (int i = 0; i < activeEntityCount; ++i)
-      {
-        if (IsBoxOverlapping(attackRange, activeEntities[i]->hitbox) && activeEntities[i] != player)
-        {
-          --activeEntities[i]->hp;
-        }
-      }
+      //TODO: Write a utility function
+      sword.type = ENTITY_SWORD;
+      v2 mousePos = ScreenPointToWorld(cam, { (float)input.mouseX, (float)input.mouseY });
+      v2 attackOffset = (mousePos - player->pos.xy).Normalize();
+      //NOTE: sword position is relative to owner!
+      sword.pos = V3(attackOffset, 0.0f);
+      sword.size = { 1.0f, 1.0f };
+      sword.owner = player;
+      LoadEntity(gameState, &entityArena, &sword);
+      activeEntityCount = entityArena.used / sizeof(entity*);
+    }
+    if (input.mouseButtonState[1])
+    {
+      //TODO: Write a utility function
+      entity e = {};
+      entity* projectile = AddEntity(gameState, &e);
+      projectile->type = ENTITY_PROJECTILE;
+      v2 mousePos = ScreenPointToWorld(cam, { (float)input.mouseX, (float)input.mouseY });
+      v2 attackOffset = (mousePos - player->pos.xy).Normalize();
+      //NOTE: sword position is relative to owner!
+      projectile->owner = player;
+      projectile->hp = 1;
+      projectile->lifeTime = 4;
+      projectile->size = V3(0.3f, 0.3f, 0.0f);
+      projectile->pos.xy = projectile->owner->pos.xy + attackOffset;
+      projectile->vel.xy = attackOffset * 5;
+      LoadEntity(gameState, &entityArena, projectile);
+      activeEntityCount = entityArena.used / sizeof(entity*);
     }
 
     for (int i = 0; i < activeEntityCount; ++i)
     {
-      if (activeEntities[i]->hp <= 0.0f)
-      {
-        RemoveEntity(gameState, activeEntities[i]);
-      }
-      MoveAndSlide(activeEntities[i], activeEntities[i]->vel, gameState, input.dt);
+      UpdateEntity(gameState, activeEntities[i], activeEntities, activeEntityCount, input.dt);
     }
     player->vel -= 0.2f * player->vel;
-    cam->pos = player->hitbox.pos;
+    cam->pos = player->pos;
 
     for (int i = 0; i < activeEntityCount;++i)
     {
+      rec current = { activeEntities[i]->pos.xy, activeEntities[i]->size.xy };
       if (activeEntities[i]->vp.pieceCount != 0)
       {
-        DrawTexture(buffer, cam, activeEntities[i]->hitbox, activeEntities[i]->vp.pieces);
+        DrawTexture(buffer, cam, current, activeEntities[i]->vp.pieces);
       }
       else
       {
-        DrawRectangle(buffer, cam, activeEntities[i]->hitbox, { 1.0f, 1.0f, 1.0f, 1.0f });
+        DrawRectangle(buffer, cam, current, { 1.0f, 1.0f, 1.0f, 1.0f });
       }
     }
   }

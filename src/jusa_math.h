@@ -66,6 +66,55 @@ inline v2 operator+(v2 a, float b);
 inline v2 operator-(v2 a, float b);
 inline v2 Abs(v2 v);
 
+union v3
+{
+  struct
+  {
+    float x, y, z;
+  };
+  struct
+  {
+    v2 xy;
+    float z;
+  };
+  float e[3];
+
+  inline v3 Normalize();
+
+  inline v3 operator*=(v3 a);
+  inline v3 operator/=(v3 a);
+  inline v3 operator+=(v3 a);
+  inline v3 operator-=(v3 a);
+  inline bool operator==(v3 a);
+  inline bool operator!=(v3 a);
+  inline bool operator<=(v3 a);
+  inline bool operator<(v3 a);
+  inline bool operator>(v3 a);
+  inline v3 operator*=(float a);
+  inline v3 operator/=(float a);
+  inline v3 operator+=(float a);
+  inline v3 operator-=(float a);
+  inline bool operator!=(float a);
+  inline bool operator==(float a);
+  inline bool operator<=(float a);
+  inline bool operator<(float a);
+  inline bool operator>(float a);
+};
+
+inline v3 Round(v3 value);
+inline v3 V3(float x, float y, float z);
+inline v3 V3(v2 xy, float z);
+inline v3 operator*(v3 a, v3 b);
+inline v3 operator/(v3 a, v3 b);
+inline v3 operator+(v3 a, v3 b);
+inline v3 operator-(v3 a, v3 b);
+inline v3 operator*(v3 a, float b);
+inline v3 operator*(float a, v3 b);
+inline v3 operator/(v3 a, float b);
+inline v3 operator+(v3 a, float b);
+inline v3 operator-(v3 a, float b);
+inline v3 Abs(v3 v);
+
 union rec
 {
   struct
