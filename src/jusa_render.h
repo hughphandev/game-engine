@@ -4,6 +4,14 @@
 #include "jusa_types.h"
 #include "jusa_utils.h"
 #include "jusa_math.h"
+#include "jusa_memory.h"
+
+struct game_offscreen_buffer
+{
+  void* memory;
+  int width;
+  int height;
+};
 
 enum brush_type
 {
@@ -18,22 +26,65 @@ struct color
   u32 ToU32();
 };
 
-u32 color::ToU32()
+struct loaded_bitmap
 {
-  ASSERT(this->r >= 0.0f);
-  ASSERT(this->g >= 0.0f);
-  ASSERT(this->b >= 0.0f);
-  ASSERT(this->a >= 0.0f);
+  u32* pixel;
+  u32 width;
+  u32 height;
+};
 
+enum render_entry_type
+{
+  RENDER_ENTRY_CLEAR,
+  RENDER_ENTRY_BITMAP,
+  RENDER_ENTRY_RECTANGLE,
+};
 
-  u32 red = RoundToU32(this->r * 255.0f);
-  u32 green = RoundToU32(this->g * 255.0f);
-  u32 blue = RoundToU32(this->b * 255.0f);
-  u32 alpha = RoundToU32(this->a * 255.0f);
+struct render_entry_header
+{
+  render_entry_type type;
+};
 
-  return (alpha << 24) | (red << 16) | (green << 8) | (blue << 0);
-}
+struct render_entry_clear
+{
+  render_entry_header header;
+  color col;
+};
 
-inline u32 LinearBlend(u32 source, u32 dest);
+struct render_entry_rectangle
+{
+  render_entry_header header;
+  v2 pos;
+  v2 size;
+
+  color col;
+  brush_type brush;
+};
+
+struct render_entry_bitmap
+{
+  render_entry_header header;
+  loaded_bitmap* texture;
+  v2 pos;
+  v2 size;
+
+  color col;
+};
+
+struct camera
+{
+  v3 offSet;
+  v3 pos;
+
+  float pixelPerMeter;
+};
+
+struct render_group
+{
+  camera* cam;
+
+  memory_arena pushBuffer;
+};
+
 
 #endif

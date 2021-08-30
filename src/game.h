@@ -1,7 +1,9 @@
 #ifndef GAME_H
 #define GAME_H
 
+#include "jusa_utils.h"
 #include "jusa_world.h"
+#include "jusa_render.h"
 
 #if INTERNAL
 struct debug_read_file_result
@@ -24,12 +26,6 @@ DEBUG_PLATFORM_FREE_MEMORY(DEBUGPlatformFreeMemory);
 DEBUG_PLATFORM_WRITE_FILE(DEBUGPlatformWriteFile);
 #endif
 
-struct game_offscreen_buffer
-{
-  void* memory;
-  int width;
-  int height;
-};
 
 struct game_sound_output
 {
@@ -71,23 +67,6 @@ struct game_input
   float dt;
 }; // TODO: Clean up
 
-struct game_camera
-{
-  v3 offSet;
-  v3 pos;
-  size_t viewDistance;
-
-  float pixelPerMeter;
-};
-
-struct loaded_bitmap
-{
-  u32* pixel;
-  u32 width;
-  u32 height;
-
-  v2 anchor;
-};
 
 struct loaded_sound
 {
@@ -97,19 +76,6 @@ struct loaded_sound
 
   size_t sampleIndex;
   bool isLooped;
-};
-
-struct memory_arena
-{
-  void* base;
-  size_t used;
-  size_t size;
-};
-
-struct visible_pieces
-{
-  loaded_bitmap pieces[10];
-  size_t pieceCount;
 };
 
 enum entity_type
@@ -127,7 +93,6 @@ struct entity
   v3 size;
   v3 vel;
 
-  visible_pieces vp;
   entity_type type;
 
   float hp;
@@ -155,7 +120,7 @@ struct sprite_sheet
 struct game_state
 {
   memory_arena arena;
-  game_camera cam;
+  camera cam;
   game_world world;
 
 #define MAX_ENTITY_COUNT 100000
@@ -164,11 +129,25 @@ struct game_state
 
   entity* player;
 
-  loaded_bitmap textures[10];
   loaded_sound sounds[10];
   size_t soundCount;
   bool isMuted;
   program_mode programMode;
+
+  u32 viewDistance;
+
+  // Textures
+  loaded_bitmap knight;
+  loaded_bitmap wall;
+};
+
+struct transient_state
+{
+#define MAX_ACTIVE_ENTITY 4096
+  entity** activeEntity;
+  size_t activeEntityCount;
+
+  memory_arena tranArena;
 };
 
 #pragma pack(push, 1)

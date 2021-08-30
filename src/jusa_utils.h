@@ -17,6 +17,9 @@ inline u32 SafeTruncateUInt64(u64 value);
 #define ASSERT(Expression) 
 #endif
 
+#define INVALID_CODE_PATH ASSERT(!"Invalid code path!")
+#define INVALID_DEFAULT_CASE default:{ASSERT(!"Invalid code path!");} 
+
 inline uint32_t SafeTruncateUInt64(uint64_t value)
 {
   // TODO: Define maximum value

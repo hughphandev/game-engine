@@ -140,4 +140,9 @@ union rec
   }
 };
 
+struct box
+{
+  v3 pos;
+  v3 size;
+};
 #endif
