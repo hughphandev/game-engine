@@ -279,7 +279,7 @@ inline bool IsInChunk(entity* it, game_world* world, i32 chunkX, i32 chunkY)
   return ((i32)chunk.x == chunkX && (i32)chunk.y == chunkY);
 }
 
-static void GameEditor(render_group* renderGroup, game_state* gameState, game_input input)
+static void GameEditor(render_group* renderGroup, game_state* gameState, transient_state* tranState, game_input input)
 {
   game_world* world = &gameState->world;
   camera* cam = &gameState->cam;
@@ -287,7 +287,7 @@ static void GameEditor(render_group* renderGroup, game_state* gameState, game_in
   v2 tileIndex = GetTileIndex(world, pos);
   rec tileBox = GetTileBound(world, (i32)tileIndex.x, (i32)tileIndex.y);
 
-  PushRect(renderGroup, tileBox.pos, tileBox.size, {1.0f, 1.0f, 1.0f, 1.0f}, BRUSH_WIREFRAME);
+  PushRect(renderGroup, tileBox.pos, tileBox.size, { 1.0f, 1.0f, 1.0f, 1.0f }, BRUSH_WIREFRAME);
 
   if (input.mouseButtonState[0])
   {
@@ -346,6 +346,11 @@ static void GameEditor(render_group* renderGroup, game_state* gameState, game_in
     dir.x -= 1.0f;
   }
   cam->pos.xy += dir.Normalize() * 10.0f * input.dt;
+
+  for (int i = 0; i < gameState->entityCount; ++i)
+  {
+    LoadEntity(tranState, &gameState->entities[i]);
+  }
 }
 
 loaded_bitmap* AddTexture(game_state* gameState, char* fileName)
@@ -420,7 +425,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     InitMemoryArena(&gameState->arena, gameMemory->permanentStorageSize - sizeof(game_state), (u8*)gameMemory->permanentStorage + sizeof(game_state));
 
     gameState->programMode = MODE_NORMAL;
-    gameState->viewDistance = 1;
+    gameState->viewDistance = 0;
 
     AddSound(gameState, gameMemory, "test.wav");
 
@@ -547,22 +552,9 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       LoadEntity(&tranState, projectile);
     }
 
-    for (int i = 0; i < tranState.activeEntityCount; ++i)
+    for (size_t i = 0; i < tranState.activeEntityCount; ++i)
     {
       UpdateEntity(gameState, &tranState, tranState.activeEntity[i], input.dt);
-
-      switch (tranState.activeEntity[i]->type)
-      {
-        case ENTITY_PLAYER:
-        {
-          PushBitmap(renderGroup, &gameState->knight, tranState.activeEntity[i]->pos.xy, tranState.activeEntity[i]->size.xy, {});
-        } break;
-
-        case ENTITY_WALL:
-        {
-          PushRect(renderGroup, tranState.activeEntity[i]->pos.xy, tranState.activeEntity[i]->size.xy, {1.0f, 1.0f, 1.0, 1.0});
-        } break;
-      }
     }
     player->vel -= 0.2f * player->vel;
     gameState->cam.pos = player->pos;
@@ -584,8 +576,38 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       SaveLevel(gameState, gameMemory, "level_demo.level");
     }
 
-    GameEditor(renderGroup, gameState, input);
+    GameEditor(renderGroup, gameState, &tranState, input);
   }
+
+  for (int i = 0; i < tranState.activeEntityCount; ++i)
+  {
+    switch (tranState.activeEntity[i]->type)
+    {
+      case ENTITY_PLAYER:
+      {
+        PushBitmap(renderGroup, &gameState->knight, tranState.activeEntity[i]->pos.xy, tranState.activeEntity[i]->size.xy);
+      } break;
+
+      case ENTITY_WALL:
+      {
+        PushBitmap(renderGroup, &gameState->wall, tranState.activeEntity[i]->pos.xy, tranState.activeEntity[i]->size.xy);
+      } break;
+
+      case ENTITY_PROJECTILE:
+      case ENTITY_SWORD:
+      {
+        entity* it = tranState.activeEntity[i];
+        PushRect(renderGroup, it->pos.xy, it->size.xy, { 1.0f, 1.0f, 1.0f, 1.0f });
+      } break;
+    }
+  }
+  float angle = gameState->time;
+  v3 origin = V3(0, 0, 0);
+  v3 xAxis = 2*Sin(angle) * V3(Cos(angle), Sin(angle), 0);
+  v3 yAxis = V3(Perp(xAxis.xy), 0);
+  v3 zAxis = V3(0, 0, 0);
+  CoordinateSystem(renderGroup, origin, xAxis, yAxis, zAxis, { Sin(angle), Cos(angle), 0.0f, 1.0f }, &gameState->wall);
+  gameState->time += input.dt;
 
   RenderGroupOutput(renderGroup, buffer);
 
@@ -597,7 +619,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
 void PlaySound(game_sound_output* soundBuffer, loaded_sound* sound)
 {
-  if (sound->isLooped || sound->sampleIndex < sound->samplesCount)
+  if (sound->sampleIndex < sound->samplesCount)
   {
     i16* samples = (i16*)sound->mem + sound->sampleIndex;
 

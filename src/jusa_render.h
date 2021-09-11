@@ -35,9 +35,10 @@ struct loaded_bitmap
 
 enum render_entry_type
 {
-  RENDER_ENTRY_CLEAR,
-  RENDER_ENTRY_BITMAP,
-  RENDER_ENTRY_RECTANGLE,
+  RENDER_TYPE_render_entry_clear,
+  RENDER_TYPE_render_entry_bitmap,
+  RENDER_TYPE_render_entry_rectangle,
+  RENDER_TYPE_render_entry_coordinate_system,
 };
 
 struct render_entry_header
@@ -49,6 +50,20 @@ struct render_entry_clear
 {
   render_entry_header header;
   color col;
+};
+
+struct render_entry_coordinate_system
+{
+  render_entry_header header;
+
+  color col;
+  v3 origin;
+  v3 xAxis;
+  v3 yAxis;
+  //TODO: use z-Axis for 3d
+  v3 zAxis;
+
+  loaded_bitmap* texture;
 };
 
 struct render_entry_rectangle

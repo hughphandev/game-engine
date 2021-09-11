@@ -139,6 +139,8 @@ struct game_state
   // Textures
   loaded_bitmap knight;
   loaded_bitmap wall;
+
+  float time;
 };
 
 struct transient_state

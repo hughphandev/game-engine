@@ -41,6 +41,36 @@ void Swap(i32* l, i32* r)
   *r = temp;
 }
 
+float Min(float* value, int count)
+{
+  ASSERT(count > 0);
+
+  float result = value[0];
+  for(int i = 0; i < count; ++i)
+  {
+    if(result > value[i])
+    {
+      result = value[i];
+    }
+  }
+  return result;
+}
+
+float Max(float* value, int count)
+{
+  ASSERT(count > 0);
+
+  float result = value[0];
+  for(int i = 0; i < count; ++i)
+  {
+    if(result < value[i])
+    {
+      result = value[i];
+    }
+  }
+  return result;
+}
+
 #include <memory.h>
 
 void Memcpy(void* dest, void* src, size_t size)

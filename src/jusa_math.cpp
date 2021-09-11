@@ -228,10 +228,19 @@ inline bool v2::operator>(float a)
 {
   return (this->x > a && this->y > a);
 }
+inline v2 v2::operator-()
+{
+  return {-this->x, -this->y};
+}
 
 inline v2 Abs(v2 v)
 {
   return { Abs(v.x), Abs(v.y) };
+}
+
+inline v2 Perp(v2 v)
+{
+  return {-v.y, v.x};
 }
 
 inline v3 v3::operator*=(v3 a)
@@ -306,6 +315,10 @@ inline bool v3::operator<(float a)
 inline bool v3::operator>(float a)
 {
   return (this->x > a && this->y > a && this->z > a);
+}
+inline v3 v3::operator-()
+{
+  return {-this->x, -this->y, -this->z};
 }
 
 inline v3 operator*(v3 a, float b)

@@ -817,7 +817,7 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
 
   if (RegisterClassA(&windowClass))
   {
-    HWND window = CreateWindowExA(WS_EX_LAYERED,
+    HWND window = CreateWindowExA(WS_EX_OVERLAPPEDWINDOW,
                                   windowClass.lpszClassName, "Main",
                                   WS_OVERLAPPEDWINDOW | WS_VISIBLE,
                                   CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,

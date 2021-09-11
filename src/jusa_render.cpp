@@ -3,23 +3,17 @@
 
 u32 color::ToU32()
 {
-  ASSERT(this->r >= 0.0f);
-  ASSERT(this->g >= 0.0f);
-  ASSERT(this->b >= 0.0f);
-  ASSERT(this->a >= 0.0f);
 
-
-  u32 red = RoundToU32(this->r * 255.0f);
-  u32 green = RoundToU32(this->g * 255.0f);
-  u32 blue = RoundToU32(this->b * 255.0f);
-  u32 alpha = RoundToU32(this->a * 255.0f);
+  u32 red = this->r < 0.0f ? 0 : RoundToU32(this->r * 255.0f);
+  u32 green = this->g < 0.0f ? 0 : RoundToU32(this->g * 255.0f);
+  u32 blue = this->b < 0.0f ? 0 : RoundToU32(this->b * 255.0f);
+  u32 alpha = this->a < 0.0f ? 0 : RoundToU32(this->a * 255.0f);
 
   return (alpha << 24) | (red << 16) | (green << 8) | (blue << 0);
 }
 
-inline u32 LinearBlend(u32 source, u32 dest)
+inline u32 AlphaBlend(u32 source, u32 dest)
 {
-  //NOTE: alpha blending!
   float t = (float)(dest >> 24) / 255.0f;
 
   u32 dR = ((dest >> 16) & 0xFF);
@@ -84,7 +78,7 @@ static void DrawImage(game_offscreen_buffer* buffer, loaded_bitmap* image)
       //NOTE: bitmap flipping;
       u32 sIndex = y * buffer->width + x;
       u32 dIndex = y * width + x;
-      pixel[sIndex] = LinearBlend(pixel[sIndex], image->pixel[dIndex]);
+      pixel[sIndex] = AlphaBlend(pixel[sIndex], image->pixel[dIndex]);
     }
   }
 }
@@ -158,6 +152,59 @@ void DrawRectangle(game_offscreen_buffer* buffer, camera* cam, rec r, color c, b
   }
 }
 
+void DrawRectSlowly(game_offscreen_buffer* buffer, camera* cam, v2 origin, v2 xAxis, v2 yAxis, color c, loaded_bitmap* texture, brush_type = BRUSH_FILL)
+{
+  v2 screenOrigin = WorldPointToScreen(cam, origin);
+  v2 screenXAxis = V2(xAxis.x, -xAxis.y) * cam->pixelPerMeter;
+  v2 screenYAxis = V2(yAxis.x, -yAxis.y) * cam->pixelPerMeter;
+
+  float invSqrlengthX = 1.0f / (Sqr(screenXAxis.x) + Sqr(screenXAxis.y));
+  float invSqrlengthy = 1.0f / (Sqr(screenYAxis.x) + Sqr(screenYAxis.y));
+
+  u32* pixel = (u32*)buffer->memory;
+
+  float xList[] = { screenOrigin.x, screenOrigin.x + screenXAxis.x, screenOrigin.x + screenYAxis.x, screenOrigin.x + screenXAxis.x + screenYAxis.x };
+  int xCount = ARRAY_COUNT(xList);
+
+  float yList[] = { screenOrigin.y, screenOrigin.y + screenXAxis.y, screenOrigin.y + screenYAxis.y, screenOrigin.y + screenXAxis.y + screenYAxis.y };
+  int yCount = ARRAY_COUNT(yList);
+
+  int xMin = Min(xList, xCount) >= 0 ? (int)Floor(Min(xList, xCount)) : 0;
+  int xMax = Max(xList, xCount) < buffer->width ? (int)Ceil(Max(xList, xCount)) : buffer->width - 1;
+  int yMin = Min(yList, yCount) >= 0 ? (int)Floor(Min(yList, yCount)) : 0;
+  int yMax = Max(xList, yCount) < buffer->height ? (int)Ceil(Max(yList, yCount)) : buffer->height - 1;
+
+  for (int x = xMin; x < xMax; x++)
+  {
+    for (int y = yMin; y < yMax; y++)
+    {
+      v2 p = V2((float)x, (float)y);
+      v2 d = p - screenOrigin;
+
+      float edge1 = Inner(Perp(screenXAxis), d);
+      float edge2 = Inner(-Perp(screenYAxis), d);
+      float edge3 = Inner(Perp(screenYAxis), d - screenXAxis);
+      float edge4 = Inner(-Perp(screenXAxis), d - screenYAxis);
+
+      if (edge1 < 0 && edge2 < 0 && edge3 < 0 && edge4 < 0)
+      {
+        float u = Inner(d, screenXAxis) * invSqrlengthX;
+        float v = Inner(d, screenYAxis) * invSqrlengthy;
+
+        ASSERT(u >= 0 && u < 1);
+        ASSERT(v >= 0 && v < 1);
+
+        i32 xPixel = (i32)Round(u * (float)(texture->width - 1));
+        i32 yPixel = (i32)Round(v * (float)(texture->height - 1));
+
+        u32 col = (u32)texture->pixel[yPixel * texture->width + xPixel];
+
+        pixel[y * buffer->width + x] = col;
+      }
+    }
+  }
+}
+
 inline void DrawTexture(game_offscreen_buffer* buffer, camera* cam, rec bound, loaded_bitmap* texture)
 {
   if (texture == 0)
@@ -192,7 +239,7 @@ inline void DrawTexture(game_offscreen_buffer* buffer, camera* cam, rec bound, l
         u32 pY = (u32)(((float)(y - yMin) / (float)(yMax - yMin)) * texture->height);
 
         u32 scrIndex = y * buffer->width + x;
-        scrPixel[scrIndex] = LinearBlend(scrPixel[scrIndex], pixel[pY * texture->width + pX]);
+        scrPixel[scrIndex] = AlphaBlend(scrPixel[scrIndex], pixel[pY * texture->width + pX]);
       }
     }
   }
@@ -207,7 +254,7 @@ static void RenderGroupOutput(render_group* renderGroup, game_offscreen_buffer* 
 
     switch (header->type)
     {
-      case RENDER_ENTRY_CLEAR:
+      case RENDER_TYPE_render_entry_clear:
       {
         render_entry_clear* entry = (render_entry_clear*)((u8*)renderGroup->pushBuffer.base + index);
         index += sizeof(*entry);
@@ -215,7 +262,7 @@ static void RenderGroupOutput(render_group* renderGroup, game_offscreen_buffer* 
         ClearBuffer(drawBuffer, entry->col);
       } break;
 
-      case RENDER_ENTRY_RECTANGLE:
+      case RENDER_TYPE_render_entry_rectangle:
       {
         render_entry_rectangle* entry = (render_entry_rectangle*)((u8*)renderGroup->pushBuffer.base + index);
         index += sizeof(*entry);
@@ -223,7 +270,7 @@ static void RenderGroupOutput(render_group* renderGroup, game_offscreen_buffer* 
         DrawRectangle(drawBuffer, renderGroup->cam, { entry->pos, entry->size }, entry->col, entry->brush);
       } break;
 
-      case RENDER_ENTRY_BITMAP:
+      case RENDER_TYPE_render_entry_bitmap:
       {
         render_entry_bitmap* entry = (render_entry_bitmap*)((u8*)renderGroup->pushBuffer.base + index);
         index += sizeof(*entry);
@@ -232,23 +279,47 @@ static void RenderGroupOutput(render_group* renderGroup, game_offscreen_buffer* 
 
       } break;
 
+      case RENDER_TYPE_render_entry_coordinate_system:
+      {
+        render_entry_coordinate_system* entry = (render_entry_coordinate_system*)((u8*)renderGroup->pushBuffer.base + index);
+        index += sizeof(*entry);
+
+        v2 size = { 0.1f, 0.1f };
+        color yellow = { 1.0f, 1.0f, 0.0f, 1.0f };
+        DrawRectangle(drawBuffer, renderGroup->cam, { entry->origin.xy, size }, yellow, BRUSH_FILL);
+        DrawRectangle(drawBuffer, renderGroup->cam, { entry->origin.xy + entry->xAxis.xy, size }, yellow, BRUSH_FILL);
+        DrawRectangle(drawBuffer, renderGroup->cam, { entry->origin.xy + entry->yAxis.xy, size }, yellow, BRUSH_FILL);
+
+        rec r = { entry->origin.xy + (entry->xAxis.xy / 2) + (entry->yAxis.xy / 2), {1, 1} };
+        DrawRectSlowly(drawBuffer, renderGroup->cam, entry->origin.xy, entry->xAxis.xy, entry->yAxis.xy, entry->col, entry->texture);
+
+      } break;
+
       INVALID_DEFAULT_CASE;
     }
   }
 }
 
-void* PushRenderElement_(render_group* renderGroup, size_t size)
+void* PushRenderElement_(render_group* renderGroup, size_t size, render_entry_type type)
 {
-  void* result = PushSize_(&renderGroup->pushBuffer, size);
+  render_entry_header* result = (render_entry_header*)PushSize_(&renderGroup->pushBuffer, size);
+
+  if (result)
+  {
+    result->type = type;
+  }
+  else
+  {
+    INVALID_CODE_PATH;
+  }
 
   return result;
 }
-#define PUSH_RENDER_ELEMENT(renderGroup, type) (type*)PushRenderElement_(renderGroup, sizeof(type))
+#define PUSH_RENDER_ELEMENT(renderGroup, type) (type*)PushRenderElement_(renderGroup, sizeof(type), RENDER_TYPE_##type) 
 
-inline render_entry_bitmap* PushBitmap(render_group* renderGroup, loaded_bitmap* texture, v2 pos, v2 size, color col)
+inline render_entry_bitmap* PushBitmap(render_group* renderGroup, loaded_bitmap* texture, v2 pos, v2 size, color col = { 1.0f, 1.0f, 1.0f, 1.0f })
 {
   render_entry_bitmap* entry = PUSH_RENDER_ELEMENT(renderGroup, render_entry_bitmap);
-  entry->header.type = RENDER_ENTRY_BITMAP;
   entry->texture = texture;
   entry->pos = pos;
   entry->size = size;
@@ -260,11 +331,23 @@ inline render_entry_bitmap* PushBitmap(render_group* renderGroup, loaded_bitmap*
 inline render_entry_rectangle* PushRect(render_group* renderGroup, v2 pos, v2 size, color col, brush_type brush = BRUSH_FILL)
 {
   render_entry_rectangle* entry = PUSH_RENDER_ELEMENT(renderGroup, render_entry_rectangle);
-  entry->header.type = RENDER_ENTRY_RECTANGLE;
   entry->pos = pos;
   entry->size = size;
   entry->col = col;
   entry->brush = brush;
+
+  return entry;
+}
+
+inline render_entry_coordinate_system* CoordinateSystem(render_group* RenderGroup, v3 origin, v3 xAxis, v3 yAxis, v3 zAxis, color col, loaded_bitmap* texture)
+{
+  render_entry_coordinate_system* entry = PUSH_RENDER_ELEMENT(RenderGroup, render_entry_coordinate_system);
+  entry->origin = origin;
+  entry->xAxis = xAxis;
+  entry->yAxis = yAxis;
+  entry->zAxis = zAxis;
+  entry->col = col;
+  entry->texture = texture;
 
   return entry;
 }

@@ -45,6 +45,7 @@ union v2
   inline v2 operator/=(float a);
   inline v2 operator+=(float a);
   inline v2 operator-=(float a);
+  inline v2 operator-();
   inline bool operator!=(float a);
   inline bool operator==(float a);
   inline bool operator<=(float a);
@@ -65,6 +66,7 @@ inline v2 operator/(v2 a, float b);
 inline v2 operator+(v2 a, float b);
 inline v2 operator-(v2 a, float b);
 inline v2 Abs(v2 v);
+inline v2 Perp(v2 v);
 
 union v3
 {
@@ -94,6 +96,7 @@ union v3
   inline v3 operator/=(float a);
   inline v3 operator+=(float a);
   inline v3 operator-=(float a);
+  inline v3 operator-();
   inline bool operator!=(float a);
   inline bool operator==(float a);
   inline bool operator<=(float a);
