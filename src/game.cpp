@@ -509,7 +509,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       dir.y -= 1;
     }
 
-    v2 playerAccel = dir.Normalize() * 50.0f;
+    v2 playerAccel = dir.Normalize() * 30.0f;
 
     if (input.space.isDown && input.space.halfTransitionCount == 1)
     {

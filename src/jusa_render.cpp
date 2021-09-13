@@ -1,17 +1,6 @@
 #include "jusa_render.h"
 #include "jusa_math.cpp"
 
-u32 color::ToU32()
-{
-
-  u32 red = this->r < 0.0f ? 0 : RoundToU32(this->r * 255.0f);
-  u32 green = this->g < 0.0f ? 0 : RoundToU32(this->g * 255.0f);
-  u32 blue = this->b < 0.0f ? 0 : RoundToU32(this->b * 255.0f);
-  u32 alpha = this->a < 0.0f ? 0 : RoundToU32(this->a * 255.0f);
-
-  return (alpha << 24) | (red << 16) | (green << 8) | (blue << 0);
-}
-
 inline u32 AlphaBlend(u32 source, u32 dest)
 {
   float t = (float)(dest >> 24) / 255.0f;
@@ -83,7 +72,7 @@ static void DrawImage(game_offscreen_buffer* buffer, loaded_bitmap* image)
   }
 }
 
-void ClearBuffer(game_offscreen_buffer* buffer, color c)
+void ClearBuffer(game_offscreen_buffer* buffer, v4 c)
 {
   u32* pixel = (u32*)buffer->memory;
   u32 col = c.ToU32();
@@ -114,7 +103,7 @@ inline v2 ScreenPointToWorld(camera* cam, v2 point)
   return worldCoord + cam->pos.xy;
 }
 
-void DrawRectangle(game_offscreen_buffer* buffer, camera* cam, rec r, color c, brush_type brush = BRUSH_FILL)
+void DrawRectangle(game_offscreen_buffer* buffer, camera* cam, rec r, v4 c, brush_type brush = BRUSH_FILL)
 {
   v2 minBound = WorldPointToScreen(cam, r.GetMinBound());
   v2 maxBound = WorldPointToScreen(cam, r.GetMaxBound());
@@ -152,7 +141,7 @@ void DrawRectangle(game_offscreen_buffer* buffer, camera* cam, rec r, color c, b
   }
 }
 
-void DrawRectSlowly(game_offscreen_buffer* buffer, camera* cam, v2 origin, v2 xAxis, v2 yAxis, color c, loaded_bitmap* texture, brush_type = BRUSH_FILL)
+void DrawRectSlowly(game_offscreen_buffer* buffer, camera* cam, v2 origin, v2 xAxis, v2 yAxis, v4 c, loaded_bitmap* texture, brush_type = BRUSH_FILL)
 {
   v2 screenOrigin = WorldPointToScreen(cam, origin);
   v2 screenXAxis = V2(xAxis.x, -xAxis.y) * cam->pixelPerMeter;
@@ -194,10 +183,31 @@ void DrawRectSlowly(game_offscreen_buffer* buffer, camera* cam, v2 origin, v2 xA
         ASSERT(u >= 0 && u < 1);
         ASSERT(v >= 0 && v < 1);
 
-        i32 xPixel = (i32)Round(u * (float)(texture->width - 1));
-        i32 yPixel = (i32)Round(v * (float)(texture->height - 1));
+        ASSERT(texture->width > 2);
+        ASSERT(texture->height > 2);
 
-        u32 col = (u32)texture->pixel[yPixel * texture->width + xPixel];
+        float xPixel = (u * (float)(texture->width - 2));
+        float yPixel = (v * (float)(texture->height - 2));
+
+        i32 xFloor = (i32)Floor(xPixel);
+        i32 yFloor = (i32)Floor(yPixel);
+
+        float tX = xPixel - xFloor;
+        float tY = yPixel - yFloor;
+
+        u32 col1 = texture->pixel[yFloor * texture->width + xFloor];
+        u32 col2 = texture->pixel[yFloor * texture->width + (xFloor + 1)];
+        u32 col3 = texture->pixel[(yFloor + 1) * texture->width + xFloor];
+        u32 col4 = texture->pixel[(yFloor + 1) * texture->width + (xFloor + 1)];
+
+        v4 sliceCol1 = { (col1 >> 0) & 0xFF, (col1 >> 8) & 0xFF, (col1 >> 16) & 0xFF, (col1 >> 24) & 0xFF };
+        v4 sliceCol2 = { (col2 >> 0) & 0xFF, (col2 >> 8) & 0xFF, (col2 >> 16) & 0xFF, (col2 >> 24) & 0xFF };
+        v4 sliceCol3 = { (col3 >> 0) & 0xFF, (col3 >> 8) & 0xFF, (col3 >> 16) & 0xFF, (col3 >> 24) & 0xFF };
+        v4 sliceCol4 = { (col4 >> 0) & 0xFF, (col4 >> 8) & 0xFF, (col4 >> 16) & 0xFF, (col4 >> 24) & 0xFF };
+
+        v4 sliceCol = Lerp(Lerp(sliceCol1, sliceCol2, tX), Lerp(sliceCol3, sliceCol4, tX), tY);
+
+        u32 col = ((u32)sliceCol.x << 0) | ((u32)sliceCol.y << 8) | ((u32)sliceCol.z << 16) | ((u32)sliceCol.w << 24);
 
         pixel[y * buffer->width + x] = col;
       }
@@ -285,7 +295,7 @@ static void RenderGroupOutput(render_group* renderGroup, game_offscreen_buffer* 
         index += sizeof(*entry);
 
         v2 size = { 0.1f, 0.1f };
-        color yellow = { 1.0f, 1.0f, 0.0f, 1.0f };
+        v4 yellow = { 1.0f, 1.0f, 0.0f, 1.0f };
         DrawRectangle(drawBuffer, renderGroup->cam, { entry->origin.xy, size }, yellow, BRUSH_FILL);
         DrawRectangle(drawBuffer, renderGroup->cam, { entry->origin.xy + entry->xAxis.xy, size }, yellow, BRUSH_FILL);
         DrawRectangle(drawBuffer, renderGroup->cam, { entry->origin.xy + entry->yAxis.xy, size }, yellow, BRUSH_FILL);
@@ -317,7 +327,7 @@ void* PushRenderElement_(render_group* renderGroup, size_t size, render_entry_ty
 }
 #define PUSH_RENDER_ELEMENT(renderGroup, type) (type*)PushRenderElement_(renderGroup, sizeof(type), RENDER_TYPE_##type) 
 
-inline render_entry_bitmap* PushBitmap(render_group* renderGroup, loaded_bitmap* texture, v2 pos, v2 size, color col = { 1.0f, 1.0f, 1.0f, 1.0f })
+inline render_entry_bitmap* PushBitmap(render_group* renderGroup, loaded_bitmap* texture, v2 pos, v2 size, v4 col = { 1.0f, 1.0f, 1.0f, 1.0f })
 {
   render_entry_bitmap* entry = PUSH_RENDER_ELEMENT(renderGroup, render_entry_bitmap);
   entry->texture = texture;
@@ -328,7 +338,7 @@ inline render_entry_bitmap* PushBitmap(render_group* renderGroup, loaded_bitmap*
   return entry;
 }
 
-inline render_entry_rectangle* PushRect(render_group* renderGroup, v2 pos, v2 size, color col, brush_type brush = BRUSH_FILL)
+inline render_entry_rectangle* PushRect(render_group* renderGroup, v2 pos, v2 size, v4 col, brush_type brush = BRUSH_FILL)
 {
   render_entry_rectangle* entry = PUSH_RENDER_ELEMENT(renderGroup, render_entry_rectangle);
   entry->pos = pos;
@@ -339,7 +349,7 @@ inline render_entry_rectangle* PushRect(render_group* renderGroup, v2 pos, v2 si
   return entry;
 }
 
-inline render_entry_coordinate_system* CoordinateSystem(render_group* RenderGroup, v3 origin, v3 xAxis, v3 yAxis, v3 zAxis, color col, loaded_bitmap* texture)
+inline render_entry_coordinate_system* CoordinateSystem(render_group* RenderGroup, v3 origin, v3 xAxis, v3 yAxis, v3 zAxis, v4 col, loaded_bitmap* texture)
 {
   render_entry_coordinate_system* entry = PUSH_RENDER_ELEMENT(RenderGroup, render_entry_coordinate_system);
   entry->origin = origin;

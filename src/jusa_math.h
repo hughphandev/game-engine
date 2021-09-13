@@ -118,6 +118,55 @@ inline v3 operator+(v3 a, float b);
 inline v3 operator-(v3 a, float b);
 inline v3 Abs(v3 v);
 
+union v4
+{
+  struct
+  {
+    float x, y, z, w;
+  };
+  float e[4];
+
+  u32 ToU32();
+
+  inline v4 Normalize();
+
+  inline v4 operator*=(v4 a);
+  inline v4 operator/=(v4 a);
+  inline v4 operator+=(v4 a);
+  inline v4 operator-=(v4 a);
+  inline bool operator==(v4 a);
+  inline bool operator!=(v4 a);
+  inline bool operator<=(v4 a);
+  inline bool operator<(v4 a);
+  inline bool operator>(v4 a);
+  inline v4 operator*=(float a);
+  inline v4 operator/=(float a);
+  inline v4 operator+=(float a);
+  inline v4 operator-=(float a);
+  inline v4 operator-();
+  inline bool operator!=(float a);
+  inline bool operator==(float a);
+  inline bool operator<=(float a);
+  inline bool operator<(float a);
+  inline bool operator>(float a);
+};
+
+inline v4 Round(v4 value);
+inline v4 V4(float x, float y, float z, float w);
+inline v4 V4(v3 xyz, float w);
+inline v4 operator*(v4 a, v4 b);
+inline v4 operator/(v4 a, v4 b);
+inline v4 operator+(v4 a, v4 b);
+inline v4 operator-(v4 a, v4 b);
+inline v4 operator*(v4 a, float b);
+inline v4 operator*(float a, v4 b);
+inline v4 operator/(v4 a, float b);
+inline v4 operator+(v4 a, float b);
+inline v4 operator-(v4 a, float b);
+inline v4 Abs(v4 v);
+
+inline v4 Lerp(v4 a, v4 b, float t);
+
 union rec
 {
   struct

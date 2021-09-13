@@ -19,12 +19,6 @@ enum brush_type
   BRUSH_WIREFRAME
 };
 
-struct color
-{
-  float r, g, b, a;
-
-  u32 ToU32();
-};
 
 struct loaded_bitmap
 {
@@ -49,14 +43,14 @@ struct render_entry_header
 struct render_entry_clear
 {
   render_entry_header header;
-  color col;
+  v4 col;
 };
 
 struct render_entry_coordinate_system
 {
   render_entry_header header;
 
-  color col;
+  v4 col;
   v3 origin;
   v3 xAxis;
   v3 yAxis;
@@ -72,7 +66,7 @@ struct render_entry_rectangle
   v2 pos;
   v2 size;
 
-  color col;
+  v4 col;
   brush_type brush;
 };
 
@@ -83,7 +77,7 @@ struct render_entry_bitmap
   v2 pos;
   v2 size;
 
-  color col;
+  v4 col;
 };
 
 struct camera

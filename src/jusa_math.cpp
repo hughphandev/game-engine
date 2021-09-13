@@ -81,9 +81,9 @@ inline v2 Round(v2 value)
 
 inline float Lerp(float a, float b, float t)
 {
-  float delta = b - a;
-  return a + (delta * t);
+  return (1 - t) * a + t * b;
 }
+
 
 inline float Min(float a, float b)
 {
@@ -157,19 +157,19 @@ inline v2 operator-(v2 a, v2 b)
 
 inline v2 v2::operator*=(v2 a)
 {
-  return { this->x *= a.x, this->y *= a.y };
+  return *this = (*this * a);
 }
 inline v2 v2::operator/=(v2 a)
 {
-  return { this->x /= a.x, this->y /= a.y };
+  return *this = (*this / a);
 }
 inline v2 v2::operator+=(v2 a)
 {
-  return { this->x += a.x, this->y += a.y };
+  return *this = (*this + a);
 }
 inline v2 v2::operator-=(v2 a)
 {
-  return { this->x -= a.x, this->y -= a.y };
+  return *this = (*this - a);
 }
 inline bool v2::operator==(v2 a)
 {
@@ -194,19 +194,19 @@ inline bool v2::operator>(v2 a)
 
 inline v2 v2::operator*=(float a)
 {
-  return { this->x *= a, this->y *= a };
+  return *this = (*this * a);
 }
 inline v2 v2::operator/=(float a)
 {
-  return { this->x /= a, this->y /= a };
+  return *this = (*this / a);
 }
 inline v2 v2::operator+=(float a)
 {
-  return { this->x += a, this->y += a };
+  return *this = (*this + a);
 }
 inline v2 v2::operator-=(float a)
 {
-  return { this->x -= a, this->y -= a };
+  return *this = (*this - a);
 }
 inline bool v2::operator==(float a)
 {
@@ -230,7 +230,7 @@ inline bool v2::operator>(float a)
 }
 inline v2 v2::operator-()
 {
-  return {-this->x, -this->y};
+  return { -this->x, -this->y };
 }
 
 inline v2 Abs(v2 v)
@@ -240,24 +240,24 @@ inline v2 Abs(v2 v)
 
 inline v2 Perp(v2 v)
 {
-  return {-v.y, v.x};
+  return { -v.y, v.x };
 }
 
 inline v3 v3::operator*=(v3 a)
 {
-  return { this->x *= a.x, this->y *= a.y, this->z *= a.z };
+  return *this = (*this * a);
 }
 inline v3 v3::operator/=(v3 a)
 {
-  return { this->x /= a.x, this->y /= a.y, this->z /= a.z };
+  return *this = (*this / a);
 }
 inline v3 v3::operator+=(v3 a)
 {
-  return { this->x += a.x, this->y += a.y, this->z += a.z };
+  return *this = (*this + a);
 }
 inline v3 v3::operator-=(v3 a)
 {
-  return { this->x -= a.x, this->y -= a.y, this->z -= a.z };
+  return *this = (*this - a);
 }
 inline bool v3::operator==(v3 a)
 {
@@ -265,7 +265,7 @@ inline bool v3::operator==(v3 a)
 }
 inline bool v3::operator!=(v3 a)
 {
-  return (this->x != a.x || this->y != a.y && this->z != a.z);
+  return !(*this == a);
 }
 inline bool v3::operator<=(v3 a)
 {
@@ -282,19 +282,19 @@ inline bool v3::operator>(v3 a)
 
 inline v3 v3::operator*=(float a)
 {
-  return { this->x *= a, this->y *= a, this->z *= a };
+  return *this = (*this * a);
 }
 inline v3 v3::operator/=(float a)
 {
-  return { this->x /= a, this->y /= a, this->z /= a };
+  return *this = (*this / a);
 }
 inline v3 v3::operator+=(float a)
 {
-  return { this->x += a, this->y += a, this->z += a };
+  return *this = (*this + a);
 }
 inline v3 v3::operator-=(float a)
 {
-  return { this->x -= a, this->y -= a, this->z -= a };
+  return *this = (*this - a);
 }
 inline bool v3::operator==(float a)
 {
@@ -302,7 +302,7 @@ inline bool v3::operator==(float a)
 }
 inline bool v3::operator!=(float a)
 {
-  return (this->x != a || this->y != a && this->z != a);
+  return !(*this == a);
 }
 inline bool v3::operator<=(float a)
 {
@@ -318,7 +318,7 @@ inline bool v3::operator>(float a)
 }
 inline v3 v3::operator-()
 {
-  return {-this->x, -this->y, -this->z};
+  return { -this->x, -this->y, -this->z };
 }
 
 inline v3 operator*(v3 a, float b)
@@ -373,5 +373,152 @@ inline v3 V3(float x, float y, float z)
 inline v3 V3(v2 xy, float z)
 {
   return { xy.x, xy.y, z };
+}
+
+inline v4 v4::operator*=(v4 a)
+{
+  return *this = (*this * a);
+}
+inline v4 v4::operator/=(v4 a)
+{
+  return *this = (*this / a);
+}
+inline v4 v4::operator+=(v4 a)
+{
+  return *this = (*this + a);
+}
+inline v4 v4::operator-=(v4 a)
+{
+  return *this = (*this - a);
+}
+inline bool v4::operator==(v4 a)
+{
+  return (this->x == a.x && this->y == a.y && this->z == a.z && this->w == a.w);
+}
+inline bool v4::operator!=(v4 a)
+{
+  return !(*this == a);
+}
+inline bool v4::operator<=(v4 a)
+{
+  return (this->x <= a.x && this->y <= a.y && this->z <= a.z && this->w <= a.w);
+}
+inline bool v4::operator<(v4 a)
+{
+  return (this->x < a.x&& this->y < a.y&& this->z < a.z&& this->w < a.w);
+}
+inline bool v4::operator>(v4 a)
+{
+  return (this->x > a.x && this->y > a.y && this->z > a.z && this->w > a.w);
+}
+
+inline v4 v4::operator*=(float a)
+{
+  return *this = (*this * a);
+}
+inline v4 v4::operator/=(float a)
+{
+  return *this = (*this / a);
+}
+inline v4 v4::operator+=(float a)
+{
+  return *this = (*this + a);
+}
+inline v4 v4::operator-=(float a)
+{
+  return *this = (*this - a);
+}
+inline bool v4::operator==(float a)
+{
+  return (this->x == a && this->y == a && this->z == a && this->w == a);
+}
+inline bool v4::operator!=(float a)
+{
+  return !(*this == a);
+}
+inline bool v4::operator<=(float a)
+{
+  return (this->x <= a && this->y <= a && this->z <= a && this->w <= a);
+}
+inline bool v4::operator<(float a)
+{
+  return (this->x < a&& this->y < a&& this->z < a&& this->w < a);
+}
+inline bool v4::operator>(float a)
+{
+  return (this->x > a && this->y > a && this->z > a && this->w > a);
+}
+inline v4 v4::operator-()
+{
+  return { -this->x, -this->y, -this->z, -this->w };
+}
+
+inline v4 operator*(v4 a, float b)
+{
+  return { a.x * b, a.y * b, a.z * b, a.w * b };
+}
+inline v4 operator*(float a, v4 b)
+{
+  return b * a;
+}
+inline v4 operator/(v4 a, float b)
+{
+  return { a.x / b, a.y / b, a.z / b, a.w / b };
+}
+inline v4 operator+(v4 a, float b)
+{
+  return { a.x + b, a.y + b, a.z + b, a.w + b };
+}
+inline v4 operator-(v4 a, float b)
+{
+  return { a.x - b, a.y - b, a.z - b, a.w - b };
+}
+
+inline v4 operator*(v4 a, v4 b)
+{
+  return { a.x * b.x, a.y * b.y, a.z * b.z, a.w * b.w };
+}
+inline v4 operator/(v4 a, v4 b)
+{
+  return { a.x / b.x, a.y / b.y, a.z / b.z, a.w / b.w };
+}
+inline v4 operator+(v4 a, v4 b)
+{
+  return { a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w };
+}
+inline v4 operator-(v4 a, v4 b)
+{
+  return { a.x - b.x, a.y - b.y, a.z - b.z, a.w - b.w };
+}
+
+inline v4 v4::Normalize()
+{
+  if (*this == 0.0f) return {};
+  float rsqrtMagtitude = Q_rsqrt(Sqr(this->x) + Sqr(this->y) + Sqr(this->z) + Sqr(this->w));
+  return{ this->x * rsqrtMagtitude, this->y * rsqrtMagtitude, this->z * rsqrtMagtitude, this->w * rsqrtMagtitude };
+}
+
+inline v4 V4(float x, float y, float z, float w)
+{
+  return { x, y, z, w };
+}
+inline v4 V4(v3 xyz, float w)
+{
+  return { xyz.x, xyz.y, xyz.z, w };
+}
+
+u32 v4::ToU32()
+{
+  u32 red = this->x < 0.0f ? 0 : RoundToU32(this->x * 255.0f);
+  u32 green = this->y < 0.0f ? 0 : RoundToU32(this->y * 255.0f);
+  u32 blue = this->z < 0.0f ? 0 : RoundToU32(this->z * 255.0f);
+  u32 alpha = this->w < 0.0f ? 0 : RoundToU32(this->w * 255.0f);
+
+  return (alpha << 24) | (red << 16) | (green << 8) | (blue << 0);
+}
+
+inline v4 Lerp(v4 a, v4 b, float t)
+{
+  return (1 - t) * a + t * b;
 }
 #endif
