@@ -603,7 +603,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   }
   float angle = gameState->time;
   v3 origin = V3(0, 0, 0);
-  v3 xAxis = 2*Sin(angle) * V3(Cos(angle), Sin(angle), 0);
+  v3 xAxis = 2*V3(Cos(angle), Sin(angle), 0);
   v3 yAxis = V3(Perp(xAxis.xy), 0);
   v3 zAxis = V3(0, 0, 0);
   CoordinateSystem(renderGroup, origin, xAxis, yAxis, zAxis, { Sin(angle), Cos(angle), 0.0f, 1.0f }, &gameState->wall);

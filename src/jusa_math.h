@@ -116,13 +116,17 @@ inline v3 operator*(float a, v3 b);
 inline v3 operator/(v3 a, float b);
 inline v3 operator+(v3 a, float b);
 inline v3 operator-(v3 a, float b);
-inline v3 Abs(v3 v);
+inline v3 Abs(v3 a);
 
 union v4
 {
   struct
   {
     float x, y, z, w;
+  };
+  struct
+  {
+    float r, g, b, a;
   };
   float e[4];
 
@@ -132,7 +136,7 @@ union v4
 
   inline v4 operator*=(v4 a);
   inline v4 operator/=(v4 a);
-  inline v4 operator+=(v4 a);
+  inline v4 operator+=(v4 v);
   inline v4 operator-=(v4 a);
   inline bool operator==(v4 a);
   inline bool operator!=(v4 a);
@@ -151,7 +155,7 @@ union v4
   inline bool operator>(float a);
 };
 
-inline v4 Round(v4 value);
+inline v4 Round(v4 v);
 inline v4 V4(float x, float y, float z, float w);
 inline v4 V4(v3 xyz, float w);
 inline v4 operator*(v4 a, v4 b);

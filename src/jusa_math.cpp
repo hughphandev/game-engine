@@ -509,10 +509,10 @@ inline v4 V4(v3 xyz, float w)
 
 u32 v4::ToU32()
 {
-  u32 red = this->x < 0.0f ? 0 : RoundToU32(this->x * 255.0f);
-  u32 green = this->y < 0.0f ? 0 : RoundToU32(this->y * 255.0f);
-  u32 blue = this->z < 0.0f ? 0 : RoundToU32(this->z * 255.0f);
-  u32 alpha = this->w < 0.0f ? 0 : RoundToU32(this->w * 255.0f);
+  u32 red = this->r < 0.0f ? 0 : RoundToU32(this->r * 255.0f);
+  u32 green = this->g < 0.0f ? 0 : RoundToU32(this->g * 255.0f);
+  u32 blue = this->b < 0.0f ? 0 : RoundToU32(this->b * 255.0f);
+  u32 alpha = this->a < 0.0f ? 0 : RoundToU32(this->a * 255.0f);
 
   return (alpha << 24) | (red << 16) | (green << 8) | (blue << 0);
 }

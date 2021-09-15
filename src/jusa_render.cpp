@@ -1,6 +1,30 @@
 #include "jusa_render.h"
 #include "jusa_math.cpp"
 
+v4 SRBGToLinear(v4 col)
+{
+  //TODO: Current gamma is 2
+  v4 result;
+  result.r = col.r * col.r;
+  result.g = col.g * col.g;
+  result.b = col.b * col.b;
+  result.a = col.a;
+
+  return result;
+}
+
+v4 LinearToSRGB(v4 col)
+{
+  //TODO: Current gamma is 2
+  v4 result;
+  result.r = sqrt(col.r);
+  result.g = sqrt(col.g);
+  result.b = sqrt(col.b);
+  result.a = col.a;
+
+  return result;
+}
+
 inline u32 AlphaBlend(u32 source, u32 dest)
 {
   float t = (float)(dest >> 24) / 255.0f;
@@ -16,7 +40,6 @@ inline u32 AlphaBlend(u32 source, u32 dest)
   return ((u32)((i32)((float)(dR - sR) * t) + sR) << 16) |
     ((u32)((i32)((float)(dG - sG) * t) + sG) << 8) |
     ((u32)((i32)((float)(dB - sB) * t) + sB) << 0);
-
 }
 
 void DrawLine(game_offscreen_buffer* buffer, v2 from, v2 to, u32 lineColor)
@@ -180,8 +203,8 @@ void DrawRectSlowly(game_offscreen_buffer* buffer, camera* cam, v2 origin, v2 xA
         float u = Inner(d, screenXAxis) * invSqrlengthX;
         float v = Inner(d, screenYAxis) * invSqrlengthy;
 
-        ASSERT(u >= 0 && u < 1);
-        ASSERT(v >= 0 && v < 1);
+        ASSERT(u >= 0 && u <= 1);
+        ASSERT(v >= 0 && v <= 1);
 
         ASSERT(texture->width > 2);
         ASSERT(texture->height > 2);
@@ -200,16 +223,22 @@ void DrawRectSlowly(game_offscreen_buffer* buffer, camera* cam, v2 origin, v2 xA
         u32 col3 = texture->pixel[(yFloor + 1) * texture->width + xFloor];
         u32 col4 = texture->pixel[(yFloor + 1) * texture->width + (xFloor + 1)];
 
-        v4 sliceCol1 = { (col1 >> 0) & 0xFF, (col1 >> 8) & 0xFF, (col1 >> 16) & 0xFF, (col1 >> 24) & 0xFF };
-        v4 sliceCol2 = { (col2 >> 0) & 0xFF, (col2 >> 8) & 0xFF, (col2 >> 16) & 0xFF, (col2 >> 24) & 0xFF };
-        v4 sliceCol3 = { (col3 >> 0) & 0xFF, (col3 >> 8) & 0xFF, (col3 >> 16) & 0xFF, (col3 >> 24) & 0xFF };
-        v4 sliceCol4 = { (col4 >> 0) & 0xFF, (col4 >> 8) & 0xFF, (col4 >> 16) & 0xFF, (col4 >> 24) & 0xFF };
+        v4 sliceCol1 = { (col1 >> 16) & 0xFF, (col1 >> 8) & 0xFF, (col1 >> 0) & 0xFF, (col1 >> 24) & 0xFF };
+        v4 sliceCol2 = { (col2 >> 16) & 0xFF, (col2 >> 8) & 0xFF, (col2 >> 0) & 0xFF, (col2 >> 24) & 0xFF };
+        v4 sliceCol3 = { (col3 >> 16) & 0xFF, (col3 >> 8) & 0xFF, (col3 >> 0) & 0xFF, (col3 >> 24) & 0xFF };
+        v4 sliceCol4 = { (col4 >> 16) & 0xFF, (col4 >> 8) & 0xFF, (col4 >> 0) & 0xFF, (col4 >> 24) & 0xFF };
 
-        v4 sliceCol = Lerp(Lerp(sliceCol1, sliceCol2, tX), Lerp(sliceCol3, sliceCol4, tX), tY);
+        sliceCol1 = SRBGToLinear(sliceCol1 / 255.0f);
+        sliceCol2 = SRBGToLinear(sliceCol2 / 255.0f);
+        sliceCol3 = SRBGToLinear(sliceCol3 / 255.0f);
+        sliceCol4 = SRBGToLinear(sliceCol4 / 255.0f);
 
-        u32 col = ((u32)sliceCol.x << 0) | ((u32)sliceCol.y << 8) | ((u32)sliceCol.z << 16) | ((u32)sliceCol.w << 24);
+        v4 src = Lerp(Lerp(sliceCol1, sliceCol2, tX), Lerp(sliceCol3, sliceCol4, tX), tY);
 
-        pixel[y * buffer->width + x] = col;
+
+        src = LinearToSRGB(src);
+        u32* dest = &pixel[y * buffer->width + x]; 
+        *dest = AlphaBlend(src.ToU32(), *dest);
       }
     }
   }
