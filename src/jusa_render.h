@@ -22,9 +22,15 @@ enum brush_type
 
 struct loaded_bitmap
 {
+#define BITMAP_PIXEL_SIZE (sizeof(u32))
   u32* pixel;
-  u32 width;
-  u32 height;
+  int width;
+  int height;
+};
+
+struct environment_map
+{
+  loaded_bitmap LOD[4];
 };
 
 enum render_entry_type
@@ -33,6 +39,7 @@ enum render_entry_type
   RENDER_TYPE_render_entry_bitmap,
   RENDER_TYPE_render_entry_rectangle,
   RENDER_TYPE_render_entry_coordinate_system,
+  RENDER_TYPE_render_entry_saturation,
 };
 
 struct render_entry_header
@@ -42,14 +49,16 @@ struct render_entry_header
 
 struct render_entry_clear
 {
-  render_entry_header header;
-  v4 col;
+  v4 color;
+};
+
+struct render_entry_saturation
+{
+  float level;
 };
 
 struct render_entry_coordinate_system
 {
-  render_entry_header header;
-
   v4 col;
   v3 origin;
   v3 xAxis;
@@ -58,11 +67,15 @@ struct render_entry_coordinate_system
   v3 zAxis;
 
   loaded_bitmap* texture;
+  loaded_bitmap* normalMap;
+
+  environment_map* top;
+  environment_map* middle;
+  environment_map* bottom;
 };
 
 struct render_entry_rectangle
 {
-  render_entry_header header;
   v2 pos;
   v2 size;
 
@@ -72,12 +85,11 @@ struct render_entry_rectangle
 
 struct render_entry_bitmap
 {
-  render_entry_header header;
   loaded_bitmap* texture;
   v2 pos;
   v2 size;
 
-  v4 col;
+  v4 color;
 };
 
 struct camera

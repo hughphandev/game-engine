@@ -66,6 +66,11 @@ inline float Sqr(float x)
   return (x * x);
 }
 
+inline float Sqrt(float x)
+{
+  return sqrtf(x);
+}
+
 inline float Abs(float value)
 {
   u32 bit = *(u32*)&value;
@@ -84,6 +89,20 @@ inline float Lerp(float a, float b, float t)
   return (1 - t) * a + t * b;
 }
 
+inline float Clamp01(float a)
+{
+  if (a > 1.0f) return 1.0f;
+  if (a < 0.0f) return 0.0f;
+  return a;
+}
+
+inline float Clamp(float a, float min, float max)
+{
+  float result;
+  result = a < min ? min : a;
+  result = a > max ? max : a;
+  return result;
+}
 
 inline float Min(float a, float b)
 {
@@ -105,11 +124,19 @@ inline v2 V2(float x, float y)
   return { x, y };
 }
 
-inline v2 v2::Normalize()
+inline v2 Normalize(v2 v)
 {
-  if (*this == 0.0f) return { 0.0f, 0.0f };
-  float rsqrtMagtitude = Q_rsqrt(Sqr(this->x) + Sqr(this->y));
-  return{ this->x * rsqrtMagtitude, this->y * rsqrtMagtitude };
+  if (v == 0.0f) return { 0.0f, 0.0f };
+  float rsqrtMagtitude = Q_rsqrt(Sqr(v.x) + Sqr(v.y));
+  return v * rsqrtMagtitude;
+}
+
+inline v2 Clamp(v2 a, v2 min, v2 max)
+{
+  v2 result;
+  result.x = Clamp(a.x, min.x, max.x);
+  result.y = Clamp(a.y, min.y, max.y);
+  return result;
 }
 
 inline float Inner(v2 a, v2 b)
@@ -359,11 +386,16 @@ inline v3 operator-(v3 a, v3 b)
   return { a.x - b.x, a.y - b.y, a.z - b.z };
 }
 
-inline v3 v3::Normalize()
+inline v3 Normalize(v3 v)
 {
-  if (*this == 0.0f) return {};
-  float rsqrtMagtitude = Q_rsqrt(Sqr(this->x) + Sqr(this->y) + Sqr(this->z));
-  return{ this->x * rsqrtMagtitude, this->y * rsqrtMagtitude , this->z * rsqrtMagtitude };
+  if (v == 0.0f) return {};
+  float rsqrtMagtitude = Q_rsqrt(Sqr(v.x) + Sqr(v.y) + Sqr(v.z));
+  return v * rsqrtMagtitude;
+}
+
+inline v3 Lerp(v3 a, v3 b, float t)
+{
+  return (1 - t) * a + t * b;
 }
 
 inline v3 V3(float x, float y, float z)
@@ -491,11 +523,11 @@ inline v4 operator-(v4 a, v4 b)
   return { a.x - b.x, a.y - b.y, a.z - b.z, a.w - b.w };
 }
 
-inline v4 v4::Normalize()
+inline v4 Normalize(v4 v)
 {
-  if (*this == 0.0f) return {};
-  float rsqrtMagtitude = Q_rsqrt(Sqr(this->x) + Sqr(this->y) + Sqr(this->z) + Sqr(this->w));
-  return{ this->x * rsqrtMagtitude, this->y * rsqrtMagtitude, this->z * rsqrtMagtitude, this->w * rsqrtMagtitude };
+  if (v == 0.0f) return {};
+  float rsqrtMagtitude = Q_rsqrt(Sqr(v.x) + Sqr(v.y) + Sqr(v.z) + Sqr(v.w));
+  return v * rsqrtMagtitude;
 }
 
 inline v4 V4(float x, float y, float z, float w)
@@ -521,4 +553,5 @@ inline v4 Lerp(v4 a, v4 b, float t)
 {
   return (1 - t) * a + t * b;
 }
+
 #endif

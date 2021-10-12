@@ -168,10 +168,10 @@ inline loaded_bitmap DEBUGLoadBMP(game_state* gameState, game_memory* mem, char*
     ASSERT(blueScan.found);
     ASSERT(greenScan.found);
 
-    i32 alphaRotate = 24 - (i32)alphaScan.index;
-    i32 redRotate = 16 - (i32)redScan.index;
-    i32 greenRotate = 8 - (i32)greenScan.index;
-    i32 blueRotate = 0 - (i32)blueScan.index;
+    u32 alphaShilf = (u32)alphaScan.index;
+    u32 redShilf = (u32)redScan.index;
+    u32 greenShilf = (u32)greenScan.index;
+    u32 blueShilf = (i32)blueScan.index;
 
     for (u32 y = 0; y < header->height; ++y)
     {
@@ -180,12 +180,19 @@ inline loaded_bitmap DEBUGLoadBMP(game_state* gameState, game_memory* mem, char*
         u32 indexMem = y * header->width + x;
         u32 index = (header->height - y - 1) * header->width + x;
 
-        u32 red = RotateLeft((filePixel[index] & header->redMask), redRotate);
-        u32 green = RotateLeft((filePixel[index] & header->greenMask), greenRotate);
-        u32 blue = RotateLeft((filePixel[index] & header->blueMask), blueRotate);
+        u32 red = (filePixel[index] & header->redMask) >> redShilf;
+        u32 green = (filePixel[index] & header->greenMask) >> greenShilf;
+        u32 blue = (filePixel[index] & header->blueMask) >> blueShilf;
 
-        u32 alpha = (alphaScan.found) ? RotateLeft((filePixel[index] & header->alphaMask), alphaRotate) : 0xFF000000;
-        result.pixel[indexMem] = (alpha | red | green | blue);
+        u32 alpha = (alphaScan.found) ? (filePixel[index] & header->alphaMask) >> alphaShilf : 0xFF;
+        float destA = (float)alpha / 255.0f;
+
+        //NODE: Premultiplied Alpha
+        red = (u32)((float)red * destA);
+        green = (u32)((float)green * destA);
+        blue = (u32)((float)blue * destA);
+
+        result.pixel[indexMem] = (red << 16) | (green << 8) | (blue << 0) | (alpha << 24);
       }
     }
     mem->DEBUGPlatformFreeMemory(file.contents);
@@ -345,7 +352,7 @@ static void GameEditor(render_group* renderGroup, game_state* gameState, transie
   {
     dir.x -= 1.0f;
   }
-  cam->pos.xy += dir.Normalize() * 10.0f * input.dt;
+  cam->pos.xy += Normalize(dir) * 10.0f * input.dt;
 
   for (int i = 0; i < gameState->entityCount; ++i)
   {
@@ -439,7 +446,6 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     world->tilesInChunk = { 16.0f, 16.0f };
     world->tileSizeInMeter = { 1.0f, 1.0f };
 
-    gameState->knight = DEBUGLoadBMP(gameState, gameMemory, "knight_idle_anim_f0.bmp");
     entity player = {};
     player.size.xy = { 0.9f, 0.9f };
     player.hp = 10;
@@ -453,20 +459,55 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     gameState->viewDistance = 1;
 
     gameState->wall = DEBUGLoadBMP(gameState, gameMemory, "wall_side_left.bmp");
+    gameState->knight = DEBUGLoadBMP(gameState, gameMemory, "knight_idle_anim_f0.bmp");
+
+    // gameState->bricks = DEBUGLoadBMP(gameState, gameMemory, "bricks.bmp");
+    // gameState->bricksNormal = MakeEmptyBitmap(&gameState->arena, gameState->bricks.width, gameState->bricks.height, false);
+    // MakeSphereNormalMap(&gameState->bricksNormal, 0.0f);
+
+    gameState->testDiffuse = MakeEmptyBitmap(&gameState->arena, 128, 128);
+    ClearBuffer(&gameState->testDiffuse, V4(0.5f, 0.5f, 0.5f, 1.0f).ToU32());
+    gameState->testNormal = MakeEmptyBitmap(&gameState->arena, gameState->testDiffuse.width, gameState->testDiffuse.height, false);
+    MakeSphereNormalMap(&gameState->testNormal, 0.0f, 0.0f, 1.0f);
 
     gameMemory->isInited = true;
   }
 
+  //NOTE: init transient state
   transient_state tranState = {};
   InitMemoryArena(&tranState.tranArena, gameMemory->transientStorageSize, gameMemory->transientStorage);
+  if (!tranState.isInit)
+  {
+    tranState.activeEntity = PUSH_ARRAY(&tranState.tranArena, entity*, MAX_ACTIVE_ENTITY);
+    tranState.activeEntityCount = 0;
 
-  tranState.activeEntity = PUSH_ARRAY(&tranState.tranArena, entity*, MAX_ACTIVE_ENTITY);
-  tranState.activeEntityCount = 0;
+    tranState.envMapWidth = 256;
+    tranState.envMapHeight = 512;
+    for (int mapIndex = 0; mapIndex < ARRAY_COUNT(tranState.envMap); ++mapIndex)
+    {
+      environment_map* map = &tranState.envMap[mapIndex];
+      u32 width = tranState.envMapWidth;
+      u32 height = tranState.envMapHeight;
+      for (int LODIndex = 0; LODIndex < ARRAY_COUNT(map->LOD); ++LODIndex)
+      {
+        map->LOD[LODIndex] = MakeEmptyBitmap(&tranState.tranArena, width, height);
+        width >>= 1;
+        height >>= 1;
+      }
+    }
 
-  ClearBuffer(buffer, { 0.0f, 0.0f, 0.0f, 0.5f });
+    tranState.isInit = true;
+  }
+  loaded_bitmap drawBuffer = {};
+  drawBuffer.pixel = (u32*)buffer->memory;
+  drawBuffer.width = buffer->width;
+  drawBuffer.height = buffer->height;
+
+
 
   game_world* world = &gameState->world;
   render_group* renderGroup = InitRenderGroup(&tranState.tranArena, MEGABYTES(4), &gameState->cam);
+  Clear(renderGroup, V4( 0.25f, 0.25f, 0.25f, 0.0f ));
 
   if (gameState->programMode == MODE_NORMAL)
   {
@@ -509,11 +550,11 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       dir.y -= 1;
     }
 
-    v2 playerAccel = dir.Normalize() * 30.0f;
+    v2 playerAccel = Normalize(dir) * 30.0f;
 
     if (input.space.isDown && input.space.halfTransitionCount == 1)
     {
-      player->vel = player->vel.Normalize() * 30.0f;
+      player->vel = Normalize(player->vel) * 30.0f;
     }
     else
     {
@@ -527,7 +568,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       //TODO: Write a utility function
       sword.type = ENTITY_SWORD;
       v2 mousePos = ScreenPointToWorld(&gameState->cam, { (float)input.mouseX, (float)input.mouseY });
-      v2 attackOffset = (mousePos - player->pos.xy).Normalize();
+      v2 attackOffset = Normalize(mousePos - player->pos.xy);
       //NOTE: sword position is relative to owner!
       sword.pos = V3(attackOffset, 0.0f);
       sword.size = { 1.0f, 1.0f };
@@ -541,7 +582,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       entity* projectile = AddEntity(gameState, &e);
       projectile->type = ENTITY_PROJECTILE;
       v2 mousePos = ScreenPointToWorld(&gameState->cam, { (float)input.mouseX, (float)input.mouseY });
-      v2 attackOffset = (mousePos - player->pos.xy).Normalize();
+      v2 attackOffset = Normalize(mousePos - player->pos.xy);
       //NOTE: sword position is relative to owner!
       projectile->owner = player;
       projectile->hp = 1;
@@ -601,15 +642,58 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
       } break;
     }
   }
-  float angle = gameState->time;
-  v3 origin = V3(0, 0, 0);
-  v3 xAxis = 2*V3(Cos(angle), Sin(angle), 0);
+
+  v2 checkerSize = V2(16, 16);
+  v3 mapCol[] = { V3(1, 0, 0), V3(0, 1, 0), V3(0, 0, 1) };
+  for (i32 mapIndex = 0; mapIndex < ARRAY_COUNT(tranState.envMap); ++mapIndex)
+  {
+    bool rowCheckerOn = false;
+    environment_map* map = &tranState.envMap[mapIndex];
+    for (u32 y = 0; y < tranState.envMapHeight; y += (u32)checkerSize.y)
+    {
+      bool checkerOn = rowCheckerOn;
+      for (u32 x = 0; x < tranState.envMapWidth; x += (u32)checkerSize.x)
+      {
+        v3 color = checkerOn ? mapCol[mapIndex] : V3(0, 0, 0);
+        v2 minP = V2((float)x, (float)y);
+        v2 maxP = minP + checkerSize;
+        DrawScreenRect(&map->LOD[0], minP, maxP, V4(color, 1.0f));
+
+        checkerOn = !checkerOn;
+      }
+      rowCheckerOn = !rowCheckerOn;
+    }
+  }
+
+  float angle = 0.0f; //gameState->time;
+  v3 origin = V3(Sin(gameState->time), 0, 0);
+  float texDim = (float)gameState->testDiffuse.width / renderGroup->cam->pixelPerMeter;
+  v3 xAxis = texDim * V3(Cos(angle), Sin(angle), 0);
   v3 yAxis = V3(Perp(xAxis.xy), 0);
   v3 zAxis = V3(0, 0, 0);
-  CoordinateSystem(renderGroup, origin, xAxis, yAxis, zAxis, { Sin(angle), Cos(angle), 0.0f, 1.0f }, &gameState->wall);
+  v4 col = V4(1.0f, 1.0f, 1.0f, 1.0f);
+  CoordinateSystem(renderGroup, origin, xAxis, yAxis, zAxis, col, &gameState->testDiffuse, &gameState->testNormal, &tranState.envMap[2], &tranState.envMap[1], &tranState.envMap[0]);
+
+  float texDimX = (float)tranState.envMapWidth / renderGroup->cam->pixelPerMeter;
+  float texDimY = (float)tranState.envMapHeight / renderGroup->cam->pixelPerMeter;
+
+  texDimX /= 4;
+  texDimY /= 4;
+
+  xAxis = V3(texDimX, 0, 0);
+  yAxis = V3(0, texDimY, 0);
+  zAxis = V3(0, 0, 0);
+  for (i32 mapIndex = 0; mapIndex < ARRAY_COUNT(tranState.envMap); ++mapIndex)
+  {
+    origin -= V3(texDimX, 0, 0);
+    CoordinateSystem(renderGroup, origin, xAxis, yAxis, zAxis, col, &tranState.envMap[mapIndex].LOD[0], 0, 0, 0, 0);
+  }
+
   gameState->time += input.dt;
 
-  RenderGroupOutput(renderGroup, buffer);
+  Saturation(renderGroup, 1.0f);
+
+  RenderGroupOutput(renderGroup, &drawBuffer);
 
   if (input.f3.isDown && input.f3.halfTransitionCount == 1)
   {
@@ -655,6 +739,6 @@ extern "C" GAME_OUTPUT_SOUND(GameOutputSound)
 
   if (!gameState->isMuted)
   {
-    PlaySound(soundBuffer, &gameState->sounds[0]);
+    // PlaySound(soundBuffer, &gameState->sounds[0]);
   }
 }

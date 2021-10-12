@@ -139,6 +139,11 @@ struct game_state
   // Textures
   loaded_bitmap knight;
   loaded_bitmap wall;
+  loaded_bitmap bricks;
+  loaded_bitmap bricksNormal;
+
+  loaded_bitmap testDiffuse;
+  loaded_bitmap testNormal;
 
   float time;
 };
@@ -148,8 +153,14 @@ struct transient_state
 #define MAX_ACTIVE_ENTITY 4096
   entity** activeEntity;
   size_t activeEntityCount;
-
   memory_arena tranArena;
+
+  u32 envMapWidth;
+  u32 envMapHeight;
+  //NOTE: 0 is bottom, 1 is middle, 2 is top
+  environment_map envMap[3];
+
+  bool isInit;
 };
 
 #pragma pack(push, 1)

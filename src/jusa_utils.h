@@ -46,9 +46,9 @@ float Min(float* value, int count)
   ASSERT(count > 0);
 
   float result = value[0];
-  for(int i = 0; i < count; ++i)
+  for (int i = 0; i < count; ++i)
   {
-    if(result > value[i])
+    if (result > value[i])
     {
       result = value[i];
     }
@@ -61,9 +61,9 @@ float Max(float* value, int count)
   ASSERT(count > 0);
 
   float result = value[0];
-  for(int i = 0; i < count; ++i)
+  for (int i = 0; i < count; ++i)
   {
-    if(result < value[i])
+    if (result < value[i])
     {
       result = value[i];
     }
@@ -76,6 +76,11 @@ float Max(float* value, int count)
 void Memcpy(void* dest, void* src, size_t size)
 {
   memcpy(dest, src, size);
+}
+
+void ZeroSize(void* mem, size_t size)
+{
+  memset(mem, 0, size);
 }
 
 
