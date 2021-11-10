@@ -27,19 +27,10 @@ inline uint32_t SafeTruncateUInt64(uint64_t value)
   return (uint32_t)value;
 }
 
-void Swap(float* l, float* r)
-{
-  float temp = *l;
-  *l = *r;
-  *r = temp;
-}
+#define DEFINE_SWAP(T)  void Swap(T* l, T* r){ T temp = *l; *l = *r; *r = temp; }
 
-void Swap(i32* l, i32* r)
-{
-  i32 temp = *l;
-  *l = *r;
-  *r = temp;
-}
+DEFINE_SWAP(float)
+DEFINE_SWAP(i32)
 
 float Min(float* value, int count)
 {

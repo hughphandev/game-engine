@@ -46,19 +46,21 @@ struct bilinear_sample
   u32 a, b, c, d;
 };
 
-bilinear_sample BilinearSample(loaded_bitmap* bitmap, u32 x, u32 y)
+bilinear_sample BilinearSample(loaded_bitmap* bitmap, i32 x, i32 y)
 {
+  i32 maxX = (x == (bitmap->width - 1)) ? x : x + 1;
+  i32 maxY = (y == (bitmap->height - 1)) ? y : y + 1;
   bilinear_sample result;
   result.a = bitmap->pixel[y * bitmap->width + x];
-  result.b = bitmap->pixel[y * bitmap->width + (x + 1)];
-  result.c = bitmap->pixel[(y + 1) * bitmap->width + x];
-  result.d = bitmap->pixel[(y + 1) * bitmap->width + (x + 1)];
+  result.b = bitmap->pixel[y * bitmap->width + maxX];
+  result.c = bitmap->pixel[maxY * bitmap->width + x];
+  result.d = bitmap->pixel[maxY * bitmap->width + maxX];
   return result;
 }
 
 v4 SRGBBilinearBlend(bilinear_sample sample, float tX, float tY)
 {
-  //NOTE: input in sRGB, output in linear
+  //NOTE: output in linear color scale 0-1
   v4 texelSampleA = UnpackToRGBA255(sample.a);
   v4 texelSampleB = UnpackToRGBA255(sample.b);
   v4 texelSampleC = UnpackToRGBA255(sample.c);
@@ -73,17 +75,17 @@ v4 SRGBBilinearBlend(bilinear_sample sample, float tX, float tY)
   return texel;
 }
 
-inline v4 AlphaBlend(v4 col, v4 baseCol)
+inline v4 AlphaBlend(v4 color, v4 baseColor)
 {
-  float invSA = (1 - col.a);
-  v4 result = invSA * baseCol + col;
+  float invSA = (1 - color.a);
+  v4 result = invSA * baseColor + color;
   return result;
 }
 
-inline u32 AlphaBlend(u32 source, u32 dest)
+inline u32 AlphaBlend(u32 color, u32 baseColor)
 {
-  v4 d = UnpackToRGBA255(dest) / 255.0f;
-  v4 s = UnpackToRGBA255(source) / 255.0f;
+  v4 d = UnpackToRGBA255(baseColor) / 255.0f;
+  v4 s = UnpackToRGBA255(color) / 255.0f;
 
   v4 col = AlphaBlend(s, d) * 255.0f;
 
@@ -127,27 +129,7 @@ void DrawLine(loaded_bitmap* drawBuffer, v2 from, v2 to, u32 lineColor)
   }
 }
 
-static void DrawImage(loaded_bitmap* buffer, loaded_bitmap* image, v4 col = { 1.0f, 1.0f, 1.0f })
-{
-  u32* pixel = buffer->pixel;
-  if (image)
-  {
-    int width = (image->width < buffer->width) ? image->width : buffer->width;
-    int height = (image->height < buffer->height) ? image->height : buffer->height;
-    for (int y = 0; y < height; ++y)
-    {
-      for (int x = 0; x < width; ++x)
-      {
-        //NOTE: bitmap flipping;
-        int dIndex = y * buffer->width + x;
-        int sIndex = y * width + x;
-        pixel[dIndex] = AlphaBlend(image->pixel[sIndex], pixel[dIndex]);
-      }
-    }
-  }
-}
-
-static void DrawScreenRect(loaded_bitmap* buffer, v2 min, v2 max, v4 color)
+static void DrawRectangle(loaded_bitmap* buffer, v2 min, v2 max, v4 color)
 {
   u32* pixel = buffer->pixel;
 
@@ -158,11 +140,23 @@ static void DrawScreenRect(loaded_bitmap* buffer, v2 min, v2 max, v4 color)
   {
     for (int x = (int)min.x; x < (int)max.x; ++x)
     {
-      //NOTE: bitmap flipping;
       int index = y * buffer->width + x;
       pixel[index] = color.ToU32();
     }
   }
+}
+
+static void DrawRectangleOutline(loaded_bitmap* buffer, v2 min, v2 max, u32 thickness, v4 color)
+{
+  u32* pixel = buffer->pixel;
+
+  min = Clamp(min, V2(0, 0), V2((float)buffer->width, (float)buffer->height));
+  max = Clamp(max, V2(0, 0), V2((float)buffer->width, (float)buffer->height));
+
+  DrawRectangle(buffer, min, V2(max.x, min.y + thickness), color);
+  DrawRectangle(buffer, min, V2(min.x + thickness, max.y), color);
+  DrawRectangle(buffer, V2(max.x - thickness, min.y), max, color);
+  DrawRectangle(buffer, V2(min.x, max.y - thickness), max, color);
 }
 
 static void ChangeSaturation(loaded_bitmap* buffer, float level)
@@ -215,6 +209,33 @@ loaded_bitmap MakeEmptyBitmap(memory_arena* arena, u32 width, u32 height, bool c
   return result;
 }
 
+void MakeSphereDiffuseMap(loaded_bitmap* bitmap, float cX = 1.0f, float cY = 1.0f)
+{
+  float invWidth = 1.0f / (bitmap->width - 1.0f);
+  float invHeight = 1.0f / (bitmap->height - 1.0f);
+
+  for (int y = 0; y < bitmap->height; ++y)
+  {
+    for (int x = 0; x < bitmap->width; ++x)
+    {
+      v2 bitmapUV = V2(x * invWidth, y * invHeight);
+      v2 N = V2(cX, cY) * (2.0f * bitmapUV - 1.0f);
+
+      float alpha = 0.0f;
+      float zSqr = 1.0f - Sqr(N.x) - Sqr(N.y);
+      if (zSqr >= 0.0f)
+      {
+        alpha = 1.0f;
+      }
+
+      v4 col = V4(alpha * V3(0.0f, 0.0f, 0.0f), alpha);
+
+      u32 index = y * bitmap->width + x;
+      bitmap->pixel[index] = col.ToU32();
+    }
+  }
+}
+
 void MakeSphereNormalMap(loaded_bitmap* bitmap, float roughness, float cX = 1.0f, float cY = 1.0f)
 {
   float invWidth = 1.0f / (bitmap->width - 1.0f);
@@ -227,8 +248,8 @@ void MakeSphereNormalMap(loaded_bitmap* bitmap, float roughness, float cX = 1.0f
       v2 bitmapUV = V2(x * invWidth, y * invHeight);
       v2 N = V2(cX, cY) * (2.0f * bitmapUV - 1.0f);
 
-      //TODO: actually generate sphere!!
-      v3 normal = V3(0.0f, 0.707106781187f, 0.707106781187f);
+      float rsqrt2 = 0.707106781187f;
+      v3 normal = V3(0.0f, rsqrt2, rsqrt2);
       float zSqr = 1.0f - Sqr(N.x) - Sqr(N.y);
       if (zSqr >= 0.0f)
       {
@@ -243,73 +264,88 @@ void MakeSphereNormalMap(loaded_bitmap* bitmap, float roughness, float cX = 1.0f
   }
 }
 
-inline v2 WorldPointToScreen(camera* cam, v2 point)
+mat4 GetPerspectiveMatrix(camera* cam)
 {
-  //TODO: Test
-  v2 relPos = point - cam->pos.xy;
-  v2 screenCoord = { relPos.x * (float)cam->pixelPerMeter, -relPos.y * (float)cam->pixelPerMeter };
-  return screenCoord + cam->offSet.xy;
+  float a = cam->size.x / cam->size.y;
+  float s = 1 / Tan(0.5f * cam->rFov);
+  float deltaZ = cam->zFar - cam->zNear;
+
+  mat4 result = {};
+  result.r0 = V4(s, 0, 0, 0);
+  result.r1 = V4(0, s * a, 0, 0);
+  result.r2 = V4(0, 0, -cam->zFar / deltaZ, -1);
+  result.r3 = V4(0, 0, -(cam->zFar * cam->zNear) / deltaZ, 0);
+
+  return result;
+}
+
+mat4 GetTranslateMatrix(v3 pos)
+{
+  mat4 result = {};
+  result.r0 = V4(1, 0, 0, -pos.x);
+  result.r1 = V4(0, 1, 0, -pos.y);
+  result.r2 = V4(0, 0, 1, -pos.z);
+  result.r3 = V4(0, 0, 0, 1);
+
+  return result;
+}
+
+mat4 GetScaleMatrix(v3 scale)
+{
+  mat4 result = {};
+  result.r0 = V4(scale.x, 0, 0, 0);
+  result.r1 = V4(0, scale.y, 0, 0);
+  result.r2 = V4(0, 0, scale.z, 0);
+  result.r3 = V4(0, 0, 0, 1);
+
+  return result;
+}
+
+mat4 GetLookAtMatrix(v3 camPos, v3 camTarget, v3 up)
+{
+  v3 camFront = Normalize(camPos - camTarget);
+  v3 camRight = Normalize(Cross(up, camFront));
+  v3 camUp = Normalize(Cross(camFront, camRight));
+
+  mat4 result = {};
+  result.r0 = V4(camRight.x, camRight.y, camRight.z, 0);
+  result.r1 = V4(camUp.x, camUp.y, camUp.z, 0);
+  result.r2 = V4(camFront.x, camFront.y, camFront.z, 0);
+  result.r3 = V4(0, 0, 0, 1);
+
+  return result;
+}
+
+inline v4 WorldPointToScreen(camera* cam, v3 point)
+{
+  mat4 proj = GetPerspectiveMatrix(cam);
+  mat4 trans = GetTranslateMatrix(cam->pos);
+  mat4 lookAt = GetLookAtMatrix(cam->pos, cam->pos + cam->dir, V3(0, 1, 0));
+  v4 homoPoint = proj * lookAt * trans * V4(point, 1);
+  homoPoint.xyz /= homoPoint.w;
+
+  homoPoint.xy = cam->size * (0.5f * (homoPoint.xy + 1.0f));
+  return homoPoint;
 }
 
 inline v2 ScreenPointToWorld(camera* cam, v2 point)
 {
   //TODO: Test
-  //TODO: fix offset of the pointer to the top-left of the window or change mouseX, mouseY relative to the top-left of the window
   v2 relPos = point - cam->offSet.xy;
-  v2 worldCoord = { relPos.x / (float)cam->pixelPerMeter, -relPos.y / (float)cam->pixelPerMeter };
+  v2 worldCoord = { relPos.x / (float)cam->meterToPixel, relPos.y / (float)cam->meterToPixel };
   return worldCoord + cam->pos.xy;
 }
 
-void DrawRectangle(loaded_bitmap* drawBuffer, camera* cam, rec r, v4 c, brush_type brush = BRUSH_FILL)
+v3 SampleEnvMap(v2 screenSpaceUV, v3 sampleDirection, float roughness, environment_map* map, float distanceFromMapInZ)
 {
-  v2 minBound = WorldPointToScreen(cam, r.GetMinBound());
-  v2 maxBound = WorldPointToScreen(cam, r.GetMaxBound());
-
-  if (minBound.x > maxBound.x) Swap(&minBound.x, &maxBound.x);
-  if (minBound.y > maxBound.y) Swap(&minBound.y, &maxBound.y);
-
-  int xMin = (int)Round(minBound.x);
-  int yMin = (int)Round(minBound.y);
-  int xMax = (int)Round(maxBound.x);
-  int yMax = (int)Round(maxBound.y);
-  if (brush == BRUSH_FILL)
-  {
-    u32* mem = (u32*)drawBuffer->pixel;
-    u32 col = c.ToU32();
-    for (int x = xMin; x < xMax; x++)
-    {
-      for (int y = yMin; y < yMax; y++)
-      {
-        if (x >= 0 && x < drawBuffer->width &&
-            y >= 0 && y < drawBuffer->height)
-        {
-          mem[y * drawBuffer->width + x] = col;
-        }
-      }
-    }
-  }
-  else if (brush == BRUSH_WIREFRAME)
-  {
-    // Draw tile bound
-    DrawLine(drawBuffer, { (float)xMin, (float)yMin }, { (float)xMax, (float)yMin }, c.ToU32());
-    DrawLine(drawBuffer, { (float)xMax, (float)yMin }, { (float)xMax, (float)yMax }, c.ToU32());
-    DrawLine(drawBuffer, { (float)xMax, (float)yMax }, { (float)xMin, (float)yMax }, c.ToU32());
-    DrawLine(drawBuffer, { (float)xMin, (float)yMax }, { (float)xMin, (float)yMin }, c.ToU32());
-  }
-}
-
-v3 SampleEnvMap(v2 screenSpaceUV, v3 sampleDirection, float roughness, environment_map* map)
-{
+  //NOTE: screenSpaceUV is normalized
   u32 LODIndex = (u32)(roughness * (float)(ARRAY_COUNT(map->LOD) - 1) + 0.5f);
   ASSERT(LODIndex < ARRAY_COUNT(map->LOD));
 
   loaded_bitmap* LOD = &map->LOD[LODIndex];
 
-  ASSERT(sampleDirection.y > 0.0f);
-  float distanceFromMapInz = 1.0f;
-  float UVsPerMeter = 0.01f;
-  float c = (UVsPerMeter * distanceFromMapInz) / sampleDirection.y;
-  //TODO: make sure we know what direction z should go in y
+  float UVsPerMeter = 0.1f; //should be different from x and y
+  float c = (UVsPerMeter * distanceFromMapInZ) / sampleDirection.y;
   v2 offset = c * V2(sampleDirection.x, sampleDirection.z);
   v2 UV = offset + screenSpaceUV;
 
@@ -320,16 +356,22 @@ v3 SampleEnvMap(v2 screenSpaceUV, v3 sampleDirection, float roughness, environme
   float xPixel = (UV.x * (float)(LOD->width - 2));
   float yPixel = (UV.y * (float)(LOD->height - 2));
 
+  ASSERT(xPixel >= 0.0f);
+  ASSERT(yPixel >= 0.0f);
 
-  i32 x = (i32)(xPixel);
-  i32 y = (i32)(yPixel);
+  i32 xFloor = (i32)(xPixel);
+  i32 yFloor = (i32)(yPixel);
 
-  float tX = xPixel - x;
-  float tY = yPixel - y;
+  float tX = xPixel - xFloor;
+  float tY = yPixel - yFloor;
 
-  bilinear_sample sample = BilinearSample(LOD, x, y);
+  bilinear_sample sample = BilinearSample(LOD, xFloor, yFloor);
   v3 result = SRGBBilinearBlend(sample, tX, tY).xyz;
 
+#if 0
+  //NOTE: turn on to see where it's reflected
+  LOD->pixel[yFloor * LOD->width + xFloor] = 0xFFFFFFFF;
+#endif
   return result;
 }
 
@@ -349,56 +391,212 @@ v4 BiasNormal(v4 normal)
   return V4((2.0f * normal.xyz) - 1.0f, normal.w);
 }
 
-
-void DrawRectSlowly(loaded_bitmap* drawBuffer, camera* cam, v2 origin, v2 xAxis, v2 yAxis, v4 c, loaded_bitmap* texture, loaded_bitmap* normalMap, environment_map* top, environment_map* middle, environment_map* bottom)
+void FillScreenRect(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, scr_rect bound)
 {
-  v2 screenOrigin = WorldPointToScreen(cam, origin);
-  v2 screenXAxis = V2(xAxis.x, -xAxis.y) * cam->pixelPerMeter;
-  v2 screenYAxis = V2(yAxis.x, -yAxis.y) * cam->pixelPerMeter;
+  v2 scrMax = V2(drawBuffer->width - 1, drawBuffer->height - 1);
+  v2 bitmapMax = V2(bitmap->width - 1, bitmap->height - 1);
 
-  float invSqrlengthX = 1.0f / (Sqr(screenXAxis.x) + Sqr(screenXAxis.y));
-  float invSqrlengthy = 1.0f / (Sqr(screenYAxis.x) + Sqr(screenYAxis.y));
+  float startY = Ceil(bound.p0.scr.y);
+  float endY = Ceil(bound.p1.scr.y);
+
+  v2 scrDeltaL = bound.p1.scr - bound.p0.scr;
+  v2 scrDeltaR = bound.p3.scr - bound.p2.scr;
+
+  v3 uvDeltaL = bound.p1.uv - bound.p0.uv;
+  v3 uvDeltaR = bound.p3.uv - bound.p2.uv;
+
+  float tStepYL = (1.0f / scrDeltaL.y);
+  float tStepYR = (1.0f / scrDeltaR.y);
+  v3 uvStepYL = uvDeltaL * tStepYL;
+  v3 uvStepYR = uvDeltaR * tStepYR;
+
+  v3 uvPreStepYL = uvDeltaL * (startY - bound.p0.scr.y) * tStepYL;
+  v3 uvPreStepYR = uvDeltaR * (startY - bound.p2.scr.y) * tStepYR;
+
+  v3 uvStartX = bound.p0.uv + uvPreStepYL;
+  v3 uvEndX = bound.p2.uv + uvPreStepYR;
+
+  for (float y = startY; y < endY; ++y, uvStartX += uvStepYL, uvEndX += uvStepYR)
+  {
+    float startX = Lerp(bound.p0.scr.x, bound.p1.scr.x, tStepYL * (y - bound.p0.scr.y));
+
+    float endX = Lerp(bound.p2.scr.x, bound.p3.scr.x, tStepYR * (y - bound.p2.scr.y));
+    for (float x = startX; x < endX; ++x)
+    {
+      // mapping
+      v3 uvPos = Lerp(uvStartX, uvEndX, (x - startX) / (endX - startX));
+      v2 scrPos = Clamp(V2(x, y), V2(0, 0), scrMax);
+
+      v2 bmPos = (uvPos.xy / uvPos.z) * bitmapMax;
+
+      i32 xFloor = (i32)(bmPos.x);
+      i32 yFloor = (i32)(bmPos.y);
+
+      float tX = bmPos.x - xFloor;
+      float tY = bmPos.y - yFloor;
+
+      bilinear_sample texelSample = BilinearSample(bitmap, xFloor, yFloor);
+      v4 texel = SRGBBilinearBlend(texelSample, tX, tY);
+
+      // texel = Hadamard(texel, color);
+      texel.r = Clamp01(texel.r);
+      texel.g = Clamp01(texel.g);
+      texel.b = Clamp01(texel.b);
+
+      i32 scrIndex = (i32)(scrPos.y * drawBuffer->width + scrPos.x);
+      u32* screenPixel = &drawBuffer->pixel[scrIndex];
+      v4 dest = UnpackToRGBA255(*screenPixel);
+
+      dest = SRGB255ToLinear1(dest);
+
+      v4 linearCol = AlphaBlend(texel, dest);
+      *screenPixel = Linear1ToSRGB1(linearCol).ToU32();
+    }
+  }
+}
+
+
+void DrawTriangle(loaded_bitmap* drawBuffer, camera* cam, triangle2 tri, v4 color, loaded_bitmap* bitmap, loaded_bitmap* normalMap, environment_map* top, environment_map* middle, environment_map* bottom)
+{
+  v3 uv[3];
+  for (i32 i = 0; i < 3; ++i)
+  {
+    float zInv = 1.0f / tri.scrP[i].w;
+    uv[i] = V3(tri.uvP[i] * zInv, zInv);
+  }
+
+  i32 count = ARRAY_COUNT(tri.scrP);
+  for (i32 i = 0; i < count; ++i)
+  {
+    for (i32 j = i + 1; j < count; ++j)
+    {
+      if (tri.scrP[i].y > tri.scrP[j].y)
+      {
+        Swap(&tri.scrP[i], &tri.scrP[j]);
+        Swap(&uv[i], &uv[j]);
+      }
+    }
+  }
+
+  float tScr = (tri.scrP[1].y - tri.scrP[0].y) / (tri.scrP[2].y - tri.scrP[0].y);
+
+  v4 scrMiddle = Lerp(tri.scrP[0], tri.scrP[2], tScr);
+  v3 uvMiddle = Lerp(uv[0], uv[2], tScr);
+
+  v4 scrMiddleL;
+  v3 uvMiddleL;
+
+  v4 scrMiddleR;
+  v3 uvMiddleR;
+
+  if (scrMiddle.x < tri.scrP[1].x)
+  {
+    scrMiddleL = scrMiddle;
+    scrMiddleR = tri.scrP[1];
+
+    uvMiddleL = uvMiddle;
+    uvMiddleR = uv[1];
+  }
+  else
+  {
+    scrMiddleL = tri.scrP[1];
+    scrMiddleR = scrMiddle;
+
+    uvMiddleL = uv[1];
+    uvMiddleR = uvMiddle;
+  }
+
+    scr_rect bound1;
+    bound1.p0 = { tri.scrP[0].xy, uv[0] };
+    bound1.p1 = { scrMiddleL.xy, uvMiddleL };
+    bound1.p2 = { tri.scrP[0].xy, uv[0] };
+    bound1.p3 = { scrMiddleR.xy, uvMiddleR };
+    FillScreenRect(drawBuffer, bitmap, bound1);
+
+    scr_rect bound2;
+    bound2.p0 = { scrMiddleL.xy, uvMiddleL };
+    bound2.p1 = { tri.scrP[2].xy, uv[2] };
+    bound2.p2 = { scrMiddleR.xy, uvMiddleR };
+    bound2.p3 = { tri.scrP[2].xy, uv[2] };
+    FillScreenRect(drawBuffer, bitmap, bound2);
+}
+
+void DrawRectSlowly(loaded_bitmap* drawBuffer, camera* cam, v2 origin, v2 xAxis, v2 yAxis, v4 color, loaded_bitmap* bitmap, loaded_bitmap* normalMap, environment_map* top, environment_map* middle, environment_map* bottom)
+{
+  mat4 trans = {};
+  trans.r0 = Normalize(V4(yAxis.y, -yAxis.x, 0, 0));
+  trans.r1 = Normalize(V4(-xAxis.y, xAxis.x, 0, 0));
+
+  v2 screenMax = V2((float)drawBuffer->width - 1, (float)drawBuffer->height - 1);
+
+  float originZ = 0.0f;
+  float originY = origin.y + 0.5f * xAxis.y + 0.5f * yAxis.y;
+  float fixedCastY = originY / screenMax.y;
+
+  float xAxisLength = Length(xAxis);
+  float yAxisLength = Length(yAxis);
+  //NOTE: nZScale can be a parameter to control scaling in z
+  float nZScale = 0.5f * (xAxisLength + yAxisLength);
+
+  v2 nXAxis = (yAxisLength / xAxisLength) * xAxis;
+  v2 nYAxis = (xAxisLength / yAxisLength) * yAxis;
+
+  float invSqrlengthX = 1.0f / (Sqr(xAxis.x) + Sqr(xAxis.y));
+  float invSqrlengthY = 1.0f / (Sqr(yAxis.x) + Sqr(yAxis.y));
 
   u32* pixel = (u32*)drawBuffer->pixel;
 
-  float xList[] = { screenOrigin.x, screenOrigin.x + screenXAxis.x, screenOrigin.x + screenYAxis.x, screenOrigin.x + screenXAxis.x + screenYAxis.x };
+  float xList[] = { origin.x, origin.x + xAxis.x, origin.x + yAxis.x, origin.x + xAxis.x + yAxis.x };
   int xCount = ARRAY_COUNT(xList);
 
-  float yList[] = { screenOrigin.y, screenOrigin.y + screenXAxis.y, screenOrigin.y + screenYAxis.y, screenOrigin.y + screenXAxis.y + screenYAxis.y };
+  float yList[] = { origin.y, origin.y + xAxis.y, origin.y + yAxis.y, origin.y + xAxis.y + yAxis.y };
   int yCount = ARRAY_COUNT(yList);
 
-  int xMin = Min(xList, xCount) >= 0 ? (int)Floor(Min(xList, xCount)) : 0;
-  int xMax = Max(xList, xCount) < drawBuffer->width ? (int)Ceil(Max(xList, xCount)) : drawBuffer->width - 1;
-  int yMin = Min(yList, yCount) >= 0 ? (int)Floor(Min(yList, yCount)) : 0;
-  int yMax = Max(xList, yCount) < drawBuffer->height ? (int)Ceil(Max(yList, yCount)) : drawBuffer->height - 1;
+  int xMin = (int)Min(xList, xCount);
+  int xMax = (int)Max(xList, xCount);
+  int yMin = (int)Min(yList, yCount);
+  int yMax = (int)Max(yList, yCount);
+
+  xMin = Clamp(xMin, 0, drawBuffer->width);
+  xMax = Clamp(xMax, 0, drawBuffer->width);
+  yMin = Clamp(yMin, 0, drawBuffer->height);
+  yMax = Clamp(yMax, 0, drawBuffer->height);
 
   for (int x = xMin; x < xMax; x++)
   {
     for (int y = yMin; y < yMax; y++)
     {
-      v2 p = V2((float)x, (float)y);
-      v2 d = p - screenOrigin;
+      ASSERT(x >= 0 && x < drawBuffer->width);
+      ASSERT(y >= 0 && y < drawBuffer->height);
+      v2 screenP = V2((float)x, (float)y);
 
-      float edge1 = Inner(Perp(screenXAxis), d);
-      float edge2 = Inner(-Perp(screenYAxis), d);
-      float edge3 = Inner(Perp(screenYAxis), d - screenXAxis);
-      float edge4 = Inner(-Perp(screenXAxis), d - screenYAxis);
+      v2 d = screenP - origin;
+
+      float edge1 = Inner(-Perp(xAxis), d);
+      float edge2 = Inner(Perp(yAxis), d - yAxis);
+      float edge3 = Inner(-Perp(yAxis), d - xAxis);
+      float edge4 = Inner(Perp(xAxis), d - xAxis - yAxis);
 
       if (edge1 < 0 && edge2 < 0 && edge3 < 0 && edge4 < 0)
       {
-        v2 screenSpaceUV = p / V2((float)drawBuffer->width - 1, (float)drawBuffer->height - 1);
+        v2 screenSpaceUV = V2(screenP.x / screenMax.x, fixedCastY);
 
-        float u = Inner(d, screenXAxis) * invSqrlengthX;
-        float v = Inner(d, screenYAxis) * invSqrlengthy;
+        float zDiff = ((float)y - originY) / cam->meterToPixel;
 
-        ASSERT(u >= 0 && u <= 1);
-        ASSERT(v >= 0 && v <= 1);
+        // float u = Inner(d, xAxis) * invSqrlengthX;
+        // float v = Inner(d, yAxis) * invSqrlengthy;
 
-        ASSERT(texture->width > 2);
-        ASSERT(texture->height > 2);
+        v4 dTemp = trans * V4(d.x, d.y, 0, 0);
+        v2 pUV = V2(dTemp.x, dTemp.y);
 
-        float xPixel = (u * (float)(texture->width - 2));
-        float yPixel = (v * (float)(texture->height - 2));
+        float u = pUV.x / xAxisLength;
+        float v = pUV.y / yAxisLength;
+
+        ASSERT(bitmap->width > 2);
+        ASSERT(bitmap->height > 2);
+
+        float xPixel = (u * (float)(bitmap->width - 2));
+        float yPixel = (v * (float)(bitmap->height - 2));
 
         i32 xFloor = (i32)(xPixel);
         i32 yFloor = (i32)(yPixel);
@@ -406,7 +604,7 @@ void DrawRectSlowly(loaded_bitmap* drawBuffer, camera* cam, v2 origin, v2 xAxis,
         float tX = xPixel - xFloor;
         float tY = yPixel - yFloor;
 
-        bilinear_sample texelSample = BilinearSample(texture, xFloor, yFloor);
+        bilinear_sample texelSample = BilinearSample(bitmap, xFloor, yFloor);
         v4 texel = SRGBBilinearBlend(texelSample, tX, tY);
 
         if (normalMap)
@@ -420,23 +618,28 @@ void DrawRectSlowly(loaded_bitmap* drawBuffer, camera* cam, v2 origin, v2 xAxis,
 
           v4 normal = Lerp(Lerp(normalSampleA, normalSampleB, tX), Lerp(normalSampleC, normalSampleD, tX), tY) / 255.0f;
           normal = BiasNormal(normal);
-          //TODO: do we really need this?
+
+          //NOTE: rotate normal base on x,y axis
+          normal.xy = normal.x * nXAxis + normal.y * nYAxis;
+          normal.z *= nZScale;
           normal = Normalize(normal);
+
+          //TODO: actually calculate 3d bounce direction
 
           //NOTE: assume eye vector point in (0, 0, 1) screen space direction
           v3 bounceDirection = 2.0f * normal.z * normal.xyz;
           bounceDirection.z -= 1.0f;
 
-          //TODO: rotate normal base on x,y axis
+          bounceDirection.z = -bounceDirection.z;
 
-          float tEnvMap = bounceDirection.y;
           float tFarMap = 0.0f;
+          float pZ = originZ + zDiff;
+          float tEnvMap = bounceDirection.y;
           environment_map* farMap = middle;
           if (tEnvMap < -0.5f)
           {
             farMap = bottom;
             tFarMap = -1.0f - (2.0f * tEnvMap);
-            bounceDirection.y = -bounceDirection.y;
           }
           else if (tEnvMap > 0.5f)
           {
@@ -452,13 +655,20 @@ void DrawRectSlowly(loaded_bitmap* drawBuffer, camera* cam, v2 origin, v2 xAxis,
           v3 lightCol = { 0, 0, 0 };
           if (farMap)
           {
-            v3 farMapCol = SampleEnvMap(screenSpaceUV, bounceDirection, normal.w, farMap);
+            float distanceFromMapInZ = farMap->pZ - pZ;
+            v3 farMapCol = SampleEnvMap(screenSpaceUV, bounceDirection, normal.w, farMap, distanceFromMapInZ);
             lightCol = Lerp(lightCol, farMapCol, tFarMap);
           }
-
           texel.rgb = texel.rgb + texel.a * lightCol;
+
+          texel.rgb *= texel.a;
+
+          if (u > 0.49f && u < 0.51f)
+          {
+            texel.rgb = V3(0, 0, 0);
+          }
         }
-        texel = Hadamard(texel, c);
+        texel = Hadamard(texel, color);
         texel.r = Clamp01(texel.r);
         texel.g = Clamp01(texel.g);
         texel.b = Clamp01(texel.b);
@@ -475,42 +685,41 @@ void DrawRectSlowly(loaded_bitmap* drawBuffer, camera* cam, v2 origin, v2 xAxis,
   }
 }
 
-inline void DrawBitmap(loaded_bitmap* drawBuffer, camera* cam, rec bound, loaded_bitmap* texture)
+inline void DrawBitmap(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, v2 minP, v2 maxP)
 {
-  if (texture == 0)
+  if (maxP.x < minP.x) return;
+  if (maxP.y < minP.y) return;
+
+  if (minP.x >= drawBuffer->width) return;
+  if (minP.y >= drawBuffer->height) return;
+  if (maxP.x < 0) return;
+  if (maxP.y < 0) return;
+
+  v2 size = maxP - minP;
+
+  for (int y = (int)minP.y; y < (int)maxP.y; y++)
   {
-    DrawRectangle(drawBuffer, cam, bound, { 1.0f, 1.0f, 1.0f, 1.0f });
-    return;
-  }
-
-  v2 minBound = WorldPointToScreen(cam, bound.GetMinBound());
-  v2 maxBound = WorldPointToScreen(cam, bound.GetMaxBound());
-
-  int xMin = (int)Round(minBound.x);
-  int yMin = (int)Round(maxBound.y);
-  int xMax = (int)Round(maxBound.x);
-  int yMax = (int)Round(minBound.y);
-
-  ASSERT(xMax >= xMin);
-  ASSERT(yMax >= yMin);
-
-  u32* pixel = texture->pixel;
-
-  u32* destPixel = drawBuffer->pixel;
-  for (int y = yMin; y < yMax; y++)
-  {
-    for (int x = xMin; x < xMax; x++)
+    for (int x = (int)minP.x; x < (int)maxP.x; x++)
     {
-      if (x >= 0 && x < drawBuffer->width &&
-          y >= 0 && y < drawBuffer->height)
-      {
-        //TODO: fix pixel scaling
-        u32 pX = (u32)(((float)(x - xMin) / (float)(xMax - xMin)) * texture->width);
-        u32 pY = (u32)(((float)(y - yMin) / (float)(yMax - yMin)) * texture->height);
+      if (x < 0 || x >= drawBuffer->width) continue;
+      if (y < 0 || y >= drawBuffer->height) continue;
 
-        u32 scrIndex = y * drawBuffer->width + x;
-        destPixel[scrIndex] = AlphaBlend(pixel[pY * texture->width + pX], destPixel[scrIndex]);
-      }
+      v2 uv = (V2((float)x, (float)y) - minP) / size;
+      v2 p = uv * V2((float)bitmap->width - 1, (float)bitmap->height - 1);
+
+      float tX = p.x - (u32)p.x;
+      float tY = p.y - (u32)p.y;
+
+      bilinear_sample sample = BilinearSample(bitmap, (u32)p.x, (u32)p.y);
+      v4 col = SRGBBilinearBlend(sample, tX, tY);
+
+      u32* pixel = &drawBuffer->pixel[y * drawBuffer->width + x];
+      v4 base = SRGB255ToLinear1(UnpackToRGBA255(*pixel));
+
+      col = AlphaBlend(col, base);
+      col = Linear1ToSRGB1(col);
+
+      *pixel = col.ToU32();
     }
   }
 }
@@ -546,7 +755,15 @@ static void RenderGroupOutput(render_group* renderGroup, loaded_bitmap* drawBuff
         render_entry_rectangle* entry = (render_entry_rectangle*)((u8*)renderGroup->pushBuffer.base + index);
         index += sizeof(*entry);
 
-        DrawRectangle(drawBuffer, renderGroup->cam, { entry->pos, entry->size }, entry->col, entry->brush);
+        DrawRectangle(drawBuffer, entry->minP, entry->maxP, entry->color);
+      } break;
+
+      case RENDER_TYPE_render_entry_rectangle_outline:
+      {
+        render_entry_rectangle_outline* entry = (render_entry_rectangle_outline*)((u8*)renderGroup->pushBuffer.base + index);
+        index += sizeof(*entry);
+
+        DrawRectangleOutline(drawBuffer, entry->minP, entry->maxP, entry->thickness, entry->color);
       } break;
 
       case RENDER_TYPE_render_entry_bitmap:
@@ -554,7 +771,7 @@ static void RenderGroupOutput(render_group* renderGroup, loaded_bitmap* drawBuff
         render_entry_bitmap* entry = (render_entry_bitmap*)((u8*)renderGroup->pushBuffer.base + index);
         index += sizeof(*entry);
 
-        DrawBitmap(drawBuffer, renderGroup->cam, { entry->pos, entry->size }, entry->texture);
+        DrawBitmap(drawBuffer, entry->bitmap, entry->minP, entry->maxP);
 
       } break;
 
@@ -563,15 +780,19 @@ static void RenderGroupOutput(render_group* renderGroup, loaded_bitmap* drawBuff
         render_entry_coordinate_system* entry = (render_entry_coordinate_system*)((u8*)renderGroup->pushBuffer.base + index);
         index += sizeof(*entry);
 
-        v2 size = { 0.1f, 0.1f };
+        v2 halfSize = { 2, 2 };
         v4 yellow = { 1.0f, 1.0f, 0.0f, 1.0f };
-        DrawRectangle(drawBuffer, renderGroup->cam, { entry->origin.xy, size }, yellow, BRUSH_FILL);
-        DrawRectangle(drawBuffer, renderGroup->cam, { entry->origin.xy + entry->xAxis.xy, size }, yellow, BRUSH_FILL);
-        DrawRectangle(drawBuffer, renderGroup->cam, { entry->origin.xy + entry->yAxis.xy, size }, yellow, BRUSH_FILL);
-        DrawRectangle(drawBuffer, renderGroup->cam, { entry->origin.xy + entry->xAxis.xy + entry->yAxis.xy, size }, yellow, BRUSH_FILL);
+        i32 pointCount = ARRAY_COUNT(entry->point);
+        for (i32 i = 0; i < pointCount; ++i)
+        {
+          DrawRectangle(drawBuffer, entry->point[i].xy - halfSize, entry->point[i].xy + halfSize, yellow);
+        }
 
-        rec r = { entry->origin.xy + (entry->xAxis.xy / 2) + (entry->yAxis.xy / 2), {1, 1} };
-        DrawRectSlowly(drawBuffer, renderGroup->cam, entry->origin.xy, entry->xAxis.xy, entry->yAxis.xy, entry->col, entry->texture, entry->normalMap, entry->top, entry->middle, entry->bottom);
+        triangle2 tri1 = { { entry->point[0], entry->point[1], entry->point[2] }, { V2(0, 0), V2(1, 0), V2(1, 1) } };
+        DrawTriangle(drawBuffer, renderGroup->cam, tri1, entry->col, entry->bitmap, entry->normalMap, entry->top, entry->middle, entry->bottom);
+
+        triangle2 tri2 = { { entry->point[0], entry->point[2], entry->point[3] }, { V2(0, 0), V2(1, 1), V2(0, 1) } };
+        DrawTriangle(drawBuffer, renderGroup->cam, tri2, entry->col, entry->bitmap, entry->normalMap, entry->top, entry->middle, entry->bottom);
 
       } break;
 
@@ -619,45 +840,65 @@ inline render_entry_saturation* Saturation(render_group* renderGroup, float leve
   return entry;
 }
 
-inline render_entry_bitmap* PushBitmap(render_group* renderGroup, loaded_bitmap* texture, v2 pos, v2 size, v4 col = { 1.0f, 1.0f, 1.0f, 1.0f })
+inline render_entry_bitmap* PushBitmap(render_group* renderGroup, loaded_bitmap* bitmap, v3 pos, v2 size, v4 col = { 1.0f, 1.0f, 1.0f, 1.0f })
 {
   render_entry_bitmap* entry = PUSH_RENDER_ELEMENT(renderGroup, render_entry_bitmap);
   if (entry)
   {
-    entry->texture = texture;
-    entry->pos = pos;
-    entry->size = size;
+    entry->bitmap = bitmap;
+    v3 halfSize = 0.5f * V3(size, 0);
+
+    v2 minP = WorldPointToScreen(renderGroup->cam, pos - halfSize).xy - V2(bitmap->width, bitmap->height) * bitmap->align;
+    v2 maxP = WorldPointToScreen(renderGroup->cam, pos + halfSize).xy - V2(bitmap->width, bitmap->height) * bitmap->align;
+
+    entry->minP = minP;
+    entry->maxP = maxP;
     entry->color = col;
   }
 
   return entry;
 }
 
-inline render_entry_rectangle* PushRect(render_group* renderGroup, v2 pos, v2 size, v4 col, brush_type brush = BRUSH_FILL)
+inline render_entry_rectangle* PushRect(render_group* renderGroup, v3 pos, v2 size, v4 col)
 {
   render_entry_rectangle* entry = PUSH_RENDER_ELEMENT(renderGroup, render_entry_rectangle);
   if (entry)
   {
-    entry->pos = pos;
-    entry->size = size;
-    entry->col = col;
-    entry->brush = brush;
+    v3 halfSize = 0.5f * V3(size, 0);
+    entry->minP = WorldPointToScreen(renderGroup->cam, pos - halfSize).xy;
+    entry->maxP = WorldPointToScreen(renderGroup->cam, pos + halfSize).xy;
+    entry->color = col;
   }
 
   return entry;
 }
 
-inline render_entry_coordinate_system* CoordinateSystem(render_group* RenderGroup, v3 origin, v3 xAxis, v3 yAxis, v3 zAxis, v4 col, loaded_bitmap* texture, loaded_bitmap* normalMap, environment_map* top, environment_map* middle, environment_map* bottom)
+inline render_entry_rectangle_outline* PushRectOutline(render_group* renderGroup, v3 pos, v2 size, u32 thickness, v4 col)
 {
-  render_entry_coordinate_system* entry = PUSH_RENDER_ELEMENT(RenderGroup, render_entry_coordinate_system);
+  render_entry_rectangle_outline* entry = PUSH_RENDER_ELEMENT(renderGroup, render_entry_rectangle_outline);
   if (entry)
   {
-    entry->origin = origin;
-    entry->xAxis = xAxis;
-    entry->yAxis = yAxis;
-    entry->zAxis = zAxis;
+    v3 halfSize = 0.5f * V3(size, 0);
+    entry->minP = WorldPointToScreen(renderGroup->cam, pos - halfSize).xy;
+    entry->maxP = WorldPointToScreen(renderGroup->cam, pos + halfSize).xy;
+    entry->color = col;
+    entry->thickness = thickness;
+  }
+
+  return entry;
+}
+
+inline render_entry_coordinate_system* CoordinateSystem(render_group* renderGroup, v3 origin, v3 xAxis, v3 yAxis, v3 zAxis, v4 col, loaded_bitmap* bitmap, loaded_bitmap* normalMap, environment_map* top, environment_map* middle, environment_map* bottom)
+{
+  render_entry_coordinate_system* entry = PUSH_RENDER_ELEMENT(renderGroup, render_entry_coordinate_system);
+  if (entry)
+  {
+    entry->point[0] = WorldPointToScreen(renderGroup->cam, origin);
+    entry->point[1] = WorldPointToScreen(renderGroup->cam, origin + xAxis);
+    entry->point[2] = WorldPointToScreen(renderGroup->cam, origin + yAxis + xAxis);
+    entry->point[3] = WorldPointToScreen(renderGroup->cam, origin + yAxis);
     entry->col = col;
-    entry->texture = texture;
+    entry->bitmap = bitmap;
     entry->normalMap = normalMap;
     entry->top = top;
     entry->middle = middle;

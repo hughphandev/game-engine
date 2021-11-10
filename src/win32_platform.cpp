@@ -191,7 +191,7 @@ static void Win32ResizeDIBSection(win32_offscreen_buffer* buffer, int width,
 
   buffer->info.bmiHeader.biSize = sizeof(buffer->info.bmiHeader);
   buffer->info.bmiHeader.biWidth = buffer->width;
-  buffer->info.bmiHeader.biHeight = -buffer->height;
+  buffer->info.bmiHeader.biHeight = buffer->height;
   buffer->info.bmiHeader.biPlanes = 1;
   buffer->info.bmiHeader.biBitCount = 32;
   buffer->info.bmiHeader.biCompression = BI_RGB;
@@ -932,9 +932,13 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
           POINT mousePoint;
           GetCursorPos(&mousePoint);
           ScreenToClient(window, &mousePoint);
-          input->mouseX = mousePoint.x - (i32)g_backBuffer.offSet.x;
-          input->mouseY = mousePoint.y - (i32)g_backBuffer.offSet.y;
-          input->mouseZ = 0;
+          i32 mouseX = mousePoint.x - (i32)g_backBuffer.offSet.x;
+          i32 mouseY = mousePoint.y - (i32)g_backBuffer.offSet.y;
+          input->dMouseX = mouseX - input->mouseX;
+          input->dMouseY = mouseY - input->mouseY;
+          input->mouseX = mouseX;
+          input->mouseY = mouseY;
+
           input->mouseButtonState[0] = GetKeyState(VK_LBUTTON) & (1 << 15);
           input->mouseButtonState[1] = GetKeyState(VK_RBUTTON) & (1 << 15);
           input->mouseButtonState[2] = GetKeyState(VK_MBUTTON) & (1 << 15);

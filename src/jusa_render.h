@@ -13,16 +13,11 @@ struct game_offscreen_buffer
   int height;
 };
 
-enum brush_type
-{
-  BRUSH_FILL,
-  BRUSH_WIREFRAME
-};
 
-
+#define BITMAP_PIXEL_SIZE (sizeof(u32))
 struct loaded_bitmap
 {
-#define BITMAP_PIXEL_SIZE (sizeof(u32))
+  v2 align;
   u32* pixel;
   int width;
   int height;
@@ -31,6 +26,28 @@ struct loaded_bitmap
 struct environment_map
 {
   loaded_bitmap LOD[4];
+  float pZ;
+};
+
+struct vertex
+{
+  v2 scr;
+  v3 uv;
+};
+
+struct triangle2
+{
+  v4 scrP[3];
+  v2 uvP[3];
+};
+
+union scr_rect
+{
+  vertex p[4];
+  struct
+  {
+    vertex p0, p1, p2, p3;
+  };
 };
 
 enum render_entry_type
@@ -38,6 +55,7 @@ enum render_entry_type
   RENDER_TYPE_render_entry_clear,
   RENDER_TYPE_render_entry_bitmap,
   RENDER_TYPE_render_entry_rectangle,
+  RENDER_TYPE_render_entry_rectangle_outline,
   RENDER_TYPE_render_entry_coordinate_system,
   RENDER_TYPE_render_entry_saturation,
 };
@@ -57,16 +75,13 @@ struct render_entry_saturation
   float level;
 };
 
+//NOTE: for testing purpose only
 struct render_entry_coordinate_system
 {
-  v4 col;
-  v3 origin;
-  v3 xAxis;
-  v3 yAxis;
-  //TODO: use z-Axis for 3d
-  v3 zAxis;
+  v4 point[4];
 
-  loaded_bitmap* texture;
+  v4 col;
+  loaded_bitmap* bitmap;
   loaded_bitmap* normalMap;
 
   environment_map* top;
@@ -76,19 +91,24 @@ struct render_entry_coordinate_system
 
 struct render_entry_rectangle
 {
-  v2 pos;
-  v2 size;
+  v2 minP;
+  v2 maxP;
+  v4 color;
+};
 
-  v4 col;
-  brush_type brush;
+struct render_entry_rectangle_outline
+{
+  v2 minP;
+  v2 maxP;
+  v4 color;
+  u32 thickness;
 };
 
 struct render_entry_bitmap
 {
-  loaded_bitmap* texture;
-  v2 pos;
-  v2 size;
-
+  loaded_bitmap* bitmap;
+  v2 minP;
+  v2 maxP;
   v4 color;
 };
 
@@ -97,7 +117,12 @@ struct camera
   v3 offSet;
   v3 pos;
 
-  float pixelPerMeter;
+  float meterToPixel;
+
+  float zNear, zFar;
+  float rFov;
+  v2 size;
+  v3 dir;
 };
 
 struct render_group

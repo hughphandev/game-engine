@@ -2,6 +2,9 @@
 #define JUSA_MATH_H
 
 #include "jusa_types.h"
+#include "jusa_utils.h"
+
+#define DEFINE_LERP(T) T Lerp(T a, T b, float t) { return (1 - t) * a + t * b; }
 
 #define PI 3.141592653589793f
 
@@ -24,6 +27,7 @@ inline float Atan(float value);
 inline float Lerp(float a, float b, float t);
 inline float Clamp01(float a);
 inline float Clamp(float a, float min, float max);
+inline int Clamp(int a, int min, int max);
 
 union v2
 {
@@ -57,6 +61,7 @@ union v2
 inline v2 Round(v2 value);
 inline float Inner(v2 a, v2 b);
 inline v2 V2(float x, float y);
+inline v2 V2(i32 x, i32 y);
 inline v2 operator*(v2 a, v2 b);
 inline v2 operator/(v2 a, v2 b);
 inline v2 operator+(v2 a, v2 b);
@@ -69,17 +74,21 @@ inline v2 operator-(v2 a, float b);
 inline v2 Abs(v2 v);
 inline v2 Perp(v2 v);
 inline v2 Normalize(v2 v);
+inline float Length(v2 v);
 inline v2 Clamp(v2 a, v2 min, v2 max);
 
 union v3
 {
   struct
   {
-    float x, y, z;
-  };
-  struct
-  {
-    v2 xy;
+    union
+    {
+      v2 xy;
+      struct
+      {
+        float x, y;
+      };
+    };
     float z;
   };
   float e[3];
@@ -107,6 +116,7 @@ union v3
 };
 
 inline v3 Round(v3 value);
+inline v3 Cross(v3 a, v3 b);
 inline v3 V3(float x, float y, float z);
 inline v3 V3(v2 xy, float z);
 inline v3 operator*(v3 a, v3 b);
@@ -120,6 +130,7 @@ inline v3 operator+(v3 a, float b);
 inline v3 operator-(v3 a, float b);
 inline v3 Abs(v3 a);
 inline v3 Normalize(v3 v);
+inline float Length(v3 v);
 
 inline v3 Lerp(v3 a, v3 b, float t);
 
@@ -149,6 +160,11 @@ union v4
     };
     float a;
   };
+  struct
+  {
+    v2 xy;
+  };
+
   float e[4];
 
   u32 ToU32();
@@ -189,8 +205,45 @@ inline v4 operator+(v4 a, float b);
 inline v4 operator-(v4 a, float b);
 inline v4 Abs(v4 v);
 inline v4 Normalize(v4 v);
+inline float Length(v4 v);
 
 inline v4 Lerp(v4 a, v4 b, float t);
+
+union mat4
+{
+  float e[4][4];
+  struct
+  {
+    v4 r0, r1, r2, r3;
+  };
+};
+
+inline mat4 operator*(mat4 a, mat4 b);
+// inline mat4 operator/(mat4 a, mat4 b);
+inline mat4 operator+(mat4 a, mat4 b);
+inline mat4 operator-(mat4 a, mat4 b);
+inline mat4 operator*(mat4 a, float b);
+inline mat4 operator*(float a, mat4 b);
+inline mat4 operator/(mat4 a, float b);
+inline mat4 operator+(mat4 a, float b);
+inline mat4 operator-(mat4 a, float b);
+inline float Det(mat4 a);
+inline bool operator==(mat4 a, mat4 b);
+
+inline v4 operator*(v4 a, mat4 b);
+inline v4 operator*(mat4 a, v4 b);
+
+struct mat4_inverse
+{
+  bool isExisted;
+  float det;
+  mat4 inv;
+};
+inline mat4_inverse Inverse(mat4 a);
+
+DEFINE_SWAP(v2)
+DEFINE_SWAP(v3)
+DEFINE_SWAP(v4)
 
 union rec
 {

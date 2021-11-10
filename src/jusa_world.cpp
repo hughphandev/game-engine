@@ -26,8 +26,8 @@ inline v2 GetChunk(v2 pos, game_world* world)
 inline v2 GetTileIndex(game_world* world, float x, float y)
 {
   //TODO: Test
-  v2 halfTileCount = Round(0.5f * V2((float)world->tileCountX, (float)world->tileCountY));
-  return Round(V2(x, -y - 1) / world->tileSizeInMeter) + halfTileCount;
+  v2 halfTileCount = (0.5f * V2((float)world->tileCountX, (float)world->tileCountY));
+  return (V2(x, y) / world->tileSizeInMeter) + halfTileCount;
 }
 
 inline v2 GetTileIndex(game_world* world, v2 pos)

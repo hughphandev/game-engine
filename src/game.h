@@ -4,6 +4,7 @@
 #include "jusa_utils.h"
 #include "jusa_world.h"
 #include "jusa_render.h"
+#include "jusa_math.h"
 
 #if INTERNAL
 struct debug_read_file_result
@@ -61,6 +62,7 @@ struct game_input
 
   // Mouse
   i32 mouseX, mouseY, mouseZ;
+  i32 dMouseX, dMouseY;
   bool mouseButtonState[5];
 
   // clock
@@ -145,6 +147,8 @@ struct game_state
   loaded_bitmap testDiffuse;
   loaded_bitmap testNormal;
 
+  float pitch;
+  float yaw;
   float time;
 };
 
