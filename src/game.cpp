@@ -409,12 +409,9 @@ void UpdateEntity(game_state* gameState, transient_state* tranState, entity* it,
 extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 {
   game_state* gameState = (game_state*)gameMemory->permanentStorage;
-  if (!gameMemory->isInited)
+  if (!gameMemory->isInit)
   {
     InitMemoryArena(&gameState->arena, gameMemory->permanentStorageSize - sizeof(game_state), (u8*)gameMemory->permanentStorage + sizeof(game_state));
-
-    input.dMouseX = 0;
-    input.dMouseY = 0;
 
     gameState->programMode = MODE_NORMAL;
     gameState->viewDistance = 0;
@@ -431,9 +428,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     gameState->cam.zNear = 0.5;
     gameState->cam.zFar = 20;
     gameState->cam.pos = V3(0, 0, 5);
-
-    gameState->pitch = 0.0f;
-    gameState->yaw = -PI * 0.5f;
+    gameState->cam.rot = {};
 
     world->tileCountX = 1024;
     world->tileCountY = 1024;
@@ -466,7 +461,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     MakeSphereNormalMap(&gameState->testNormal, 0.0f);
     MakeSphereDiffuseMap(&gameState->testDiffuse);
 
-    gameMemory->isInited = true;
+    gameMemory->isInit = true;
   }
 
 
@@ -572,15 +567,19 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     dir.y -= 1;
   }
 
-  v2 camRot = V2(input.mouseX, input.mouseY) - 0.5f * V2(drawBuffer.width, drawBuffer.height);
-  gameState->pitch = -camRot.y * input.dt * 0.01f;
-  gameState->yaw = (-PI * 0.5f) + camRot.x * input.dt * 0.01f;
 
-  renderGroup->cam->dir.x = Cos(gameState->yaw) * Cos(gameState->pitch);
-  renderGroup->cam->dir.y = Sin(gameState->pitch);
-  renderGroup->cam->dir.z = Sin(gameState->yaw) * Cos(gameState->pitch);
 
-  renderGroup->cam->pos += Normalize(V3(dir.x, 0.0f, -dir.y)) * input.dt;
+
+  gameState->cam.rot += V2(input.dMouseX, input.dMouseY);
+  float pitch = -gameState->cam.rot.y * input.dt * 0.01f;
+  float yaw = (-PI * 0.5f) + gameState->cam.rot.x * input.dt * 0.01f;
+
+  renderGroup->cam->dir.x = Cos(yaw) * Cos(pitch);
+  renderGroup->cam->dir.y = Sin(pitch);
+  renderGroup->cam->dir.z = Sin(yaw) * Cos(pitch);
+  renderGroup->cam->dir = Normalize(renderGroup->cam->dir);
+
+  renderGroup->cam->pos += Normalize(dir.y * renderGroup->cam->dir + dir.x * Cross(renderGroup->cam->dir, V3(0, 1, 0))) * input.dt;
 
   float angle = PI / 2.0f; //0.5f * gameState->time;
   v3 origin = V3(0.0f, 0.0f, 0.0f);
@@ -598,6 +597,21 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   Saturation(renderGroup, 1.0f);
 
   RenderGroupOutput(renderGroup, &drawBuffer);
+
+  for (i32 y = 0; y < 10; ++y)
+  {
+    for (i32 x = 0; x < 10; ++x)
+    {
+      i32 currentX = input.mouseX + x;
+      i32 currentY = input.mouseY + y;
+      i32 index = currentY * drawBuffer.width + currentX;
+      if (index >= 0 && index < drawBuffer.width * drawBuffer.height)
+      {
+
+        drawBuffer.pixel[index] = 0xFFFFFFFF;
+      }
+    }
+  }
 
 #if 0
   //NOTE: turn on to see envmap

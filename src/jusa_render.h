@@ -116,6 +116,7 @@ struct camera
 {
   v3 offSet;
   v3 pos;
+  v2 rot;
 
   float meterToPixel;
 

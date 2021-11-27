@@ -301,9 +301,9 @@ mat4 GetScaleMatrix(v3 scale)
   return result;
 }
 
-mat4 GetLookAtMatrix(v3 camPos, v3 camTarget, v3 up)
+mat4 GetLookAtMatrix(v3 pos, v3 target, v3 up)
 {
-  v3 camFront = Normalize(camPos - camTarget);
+  v3 camFront = Normalize(pos - target);
   v3 camRight = Normalize(Cross(up, camFront));
   v3 camUp = Normalize(Cross(camFront, camRight));
 
@@ -320,10 +320,13 @@ inline v4 WorldPointToScreen(camera* cam, v3 point)
 {
   mat4 proj = GetPerspectiveMatrix(cam);
   mat4 trans = GetTranslateMatrix(cam->pos);
-  mat4 lookAt = GetLookAtMatrix(cam->pos, cam->pos + cam->dir, V3(0, 1, 0));
-  v4 homoPoint = proj * lookAt * trans * V4(point, 1);
+  mat4 view = GetLookAtMatrix(cam->pos, cam->pos + cam->dir, V3(0, 1, 0));
+
+  //NOTE: transform from world coordinate to NDC
+  v4 homoPoint = proj * view * trans * V4(point, 1);
   homoPoint.xyz /= homoPoint.w;
 
+  //NOTE: transform from NDC to screen coordinate
   homoPoint.xy = cam->size * (0.5f * (homoPoint.xy + 1.0f));
   return homoPoint;
 }
@@ -391,7 +394,7 @@ v4 BiasNormal(v4 normal)
   return V4((2.0f * normal.xyz) - 1.0f, normal.w);
 }
 
-void FillScreenRect(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, scr_rect bound)
+void DrawScreenBitmap(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, scr_rect bound)
 {
   v2 scrMax = V2(drawBuffer->width - 1, drawBuffer->height - 1);
   v2 bitmapMax = V2(bitmap->width - 1, bitmap->height - 1);
@@ -437,6 +440,7 @@ void FillScreenRect(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, scr_rect b
 
       bilinear_sample texelSample = BilinearSample(bitmap, xFloor, yFloor);
       v4 texel = SRGBBilinearBlend(texelSample, tX, tY);
+
 
       // texel = Hadamard(texel, color);
       texel.r = Clamp01(texel.r);
@@ -511,14 +515,14 @@ void DrawTriangle(loaded_bitmap* drawBuffer, camera* cam, triangle2 tri, v4 colo
     bound1.p1 = { scrMiddleL.xy, uvMiddleL };
     bound1.p2 = { tri.scrP[0].xy, uv[0] };
     bound1.p3 = { scrMiddleR.xy, uvMiddleR };
-    FillScreenRect(drawBuffer, bitmap, bound1);
+    DrawScreenBitmap(drawBuffer, bitmap, bound1);
 
     scr_rect bound2;
     bound2.p0 = { scrMiddleL.xy, uvMiddleL };
     bound2.p1 = { tri.scrP[2].xy, uv[2] };
     bound2.p2 = { scrMiddleR.xy, uvMiddleR };
     bound2.p3 = { tri.scrP[2].xy, uv[2] };
-    FillScreenRect(drawBuffer, bitmap, bound2);
+    DrawScreenBitmap(drawBuffer, bitmap, bound2);
 }
 
 void DrawRectSlowly(loaded_bitmap* drawBuffer, camera* cam, v2 origin, v2 xAxis, v2 yAxis, v4 color, loaded_bitmap* bitmap, loaded_bitmap* normalMap, environment_map* top, environment_map* middle, environment_map* bottom)

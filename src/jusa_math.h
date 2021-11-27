@@ -129,6 +129,7 @@ inline v3 operator/(v3 a, float b);
 inline v3 operator+(v3 a, float b);
 inline v3 operator-(v3 a, float b);
 inline v3 Abs(v3 a);
+inline v3 Perp(v3 v);
 inline v3 Normalize(v3 v);
 inline float Length(v3 v);
 

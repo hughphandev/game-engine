@@ -932,18 +932,32 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
           POINT mousePoint;
           GetCursorPos(&mousePoint);
           ScreenToClient(window, &mousePoint);
-          i32 mouseX = mousePoint.x - (i32)g_backBuffer.offSet.x;
-          i32 mouseY = mousePoint.y - (i32)g_backBuffer.offSet.y;
-          input->dMouseX = mouseX - input->mouseX;
-          input->dMouseY = mouseY - input->mouseY;
-          input->mouseX = mouseX;
-          input->mouseY = mouseY;
+
+          //NOTE: remap the origin to bottom half of the draw buffer
+          input->mouseX = mousePoint.x - (i32)g_backBuffer.offSet.x;
+          input->mouseY = (i32)(g_backBuffer.offSet.y + g_backBuffer.height) - mousePoint.y;
+
 
           input->mouseButtonState[0] = GetKeyState(VK_LBUTTON) & (1 << 15);
           input->mouseButtonState[1] = GetKeyState(VK_RBUTTON) & (1 << 15);
           input->mouseButtonState[2] = GetKeyState(VK_MBUTTON) & (1 << 15);
           input->mouseButtonState[3] = GetKeyState(VK_XBUTTON1) & (1 << 15);
           input->mouseButtonState[4] = GetKeyState(VK_XBUTTON2) & (1 << 15);
+
+          if (window == GetActiveWindow())
+          {
+            RECT wRect;
+            GetWindowRect(window, &wRect);
+            int mX = (wRect.left + wRect.right) / 2;
+            int mY = (wRect.top + wRect.bottom) / 2;
+            SetCursorPos(mX, mY);
+
+            POINT midPoint = { mX, mY };
+            ScreenToClient(window, &midPoint);
+
+            input->dMouseX = mousePoint.x - midPoint.x;
+            input->dMouseY = mousePoint.y - midPoint.y;
+          }
 
           // Note: Update the game in fixed interval
           input->dt = secondsPerUpdate;

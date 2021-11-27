@@ -147,8 +147,6 @@ struct game_state
   loaded_bitmap testDiffuse;
   loaded_bitmap testNormal;
 
-  float pitch;
-  float yaw;
   float time;
 };
 
@@ -226,7 +224,7 @@ struct wav_fmt
 
 struct game_memory
 {
-  bool isInited;
+  bool isInit;
 
   u64 permanentStorageSize;
   void* permanentStorage; // TODO: REQUIRE clear to zero on startup
