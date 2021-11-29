@@ -699,6 +699,28 @@ inline LARGE_INTEGER Win32GetWallClock()
   return timer;
 }
 
+static void HandleDebugCycleCounter(game_memory* memory)
+{
+#if INTERNAL
+
+  OutputDebugStringA("DEBUG CYCLE COUNTS:\n");
+  for (int i = 0; i < ARRAY_COUNT(memory->counter); ++i)
+  {
+    debug_cycle_counter* counter = memory->counter + i;
+    if (counter->hitCount)
+    {
+      char buf[256];
+      _snprintf_s(buf, sizeof(buf), "%d: %lldcy %uh %lldcy/h\n", i, counter->cycleCount, counter->hitCount, counter->cycleCount / counter->hitCount);
+      OutputDebugStringA(buf);
+
+      counter->cycleCount = 0;
+      counter->hitCount = 0;
+    }
+  }
+
+#endif
+}
+
 inline float Win32GetSecondsElapsed(LARGE_INTEGER before, LARGE_INTEGER after, LARGE_INTEGER frequency)
 {
   return (float)(after.QuadPart - before.QuadPart) / frequency.QuadPart;
@@ -961,6 +983,7 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
 
           // Note: Update the game in fixed interval
           input->dt = secondsPerUpdate;
+
           if (recordState.isRecording)
           {
             Win32RecordInput(*input, &recordState);
@@ -977,7 +1000,11 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
             buffer.width = g_backBuffer.width;
             buffer.height = g_backBuffer.height;
 
-            game.UpdateAndRender(&gameMemory, &buffer, *input);
+            if (game.UpdateAndRender)
+            {
+              game.UpdateAndRender(&gameMemory, &buffer, *input);
+              HandleDebugCycleCounter(&gameMemory);
+            }
 
 
             // TODO: Continue when has more precise profiling tool!

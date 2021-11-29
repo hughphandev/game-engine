@@ -406,17 +406,26 @@ void UpdateEntity(game_state* gameState, transient_state* tranState, entity* it,
   }
 }
 
+#if INTERNAL
+game_memory* g_memory;
+#endif
+
 extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 {
-  game_state* gameState = (game_state*)gameMemory->permanentStorage;
-  if (!gameMemory->isInit)
+#if INTERNAL
+  g_memory = memory;
+#endif
+  BEGIN_TIMER_BLOCK(GameUpdateAndRender);
+
+  game_state* gameState = (game_state*)memory->permanentStorage;
+  if (!memory->isInit)
   {
-    InitMemoryArena(&gameState->arena, gameMemory->permanentStorageSize - sizeof(game_state), (u8*)gameMemory->permanentStorage + sizeof(game_state));
+    InitMemoryArena(&gameState->arena, memory->permanentStorageSize - sizeof(game_state), (u8*)memory->permanentStorage + sizeof(game_state));
 
     gameState->programMode = MODE_NORMAL;
     gameState->viewDistance = 0;
 
-    AddSound(gameState, gameMemory, "test.wav");
+    AddSound(gameState, memory, "test.wav");
 
     game_world* world = &gameState->world;
     gameState->cam.meterToPixel = buffer->height / 20.0f;
@@ -444,14 +453,14 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     player.canUpdate = true;
     gameState->player = AddEntity(gameState, &player);
 
-    LoadLevel(gameState, gameMemory, "level_demo.level");
+    LoadLevel(gameState, memory, "level_demo.level");
 
     gameState->viewDistance = 1;
 
-    gameState->wall = DEBUGLoadBMP(gameState, gameMemory, "wall_side_left.bmp");
-    gameState->knight = DEBUGLoadBMP(gameState, gameMemory, "knight_idle_anim_f0.bmp");
+    gameState->wall = DEBUGLoadBMP(gameState, memory, "wall_side_left.bmp");
+    gameState->knight = DEBUGLoadBMP(gameState, memory, "knight_idle_anim_f0.bmp");
 
-    gameState->bricks = DEBUGLoadBMP(gameState, gameMemory, "bricks.bmp");
+    gameState->bricks = DEBUGLoadBMP(gameState, memory, "bricks.bmp");
     gameState->bricksNormal = MakeEmptyBitmap(&gameState->arena, gameState->bricks.width, gameState->bricks.height, false);
     MakeSphereNormalMap(&gameState->bricksNormal, 0.0f);
 
@@ -461,13 +470,13 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     MakeSphereNormalMap(&gameState->testNormal, 0.0f);
     MakeSphereDiffuseMap(&gameState->testDiffuse);
 
-    gameMemory->isInit = true;
+    memory->isInit = true;
   }
 
 
   //NOTE: init transient state
   transient_state tranState = {};
-  InitMemoryArena(&tranState.tranArena, gameMemory->transientStorageSize, gameMemory->transientStorage);
+  InitMemoryArena(&tranState.tranArena, memory->transientStorageSize, memory->transientStorage);
   if (!tranState.isInit)
   {
     tranState.activeEntity = PUSH_ARRAY(&tranState.tranArena, entity*, MAX_ACTIVE_ENTITY);
@@ -626,7 +635,9 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   {
     gameState->isMuted = !gameState->isMuted;
   }
-}
+
+  END_TIMER_BLOCK(GameUpdateAndRender);
+  }
 
 void PlaySound(game_sound_output* soundBuffer, loaded_sound* sound)
 {
@@ -662,7 +673,7 @@ void MixSound(game_sound_output* soundBuffer, loaded_sound* sounds, size_t sound
 
 extern "C" GAME_OUTPUT_SOUND(GameOutputSound)
 {
-  game_state* gameState = (game_state*)gameMemory->permanentStorage;
+  game_state* gameState = (game_state*)memory->permanentStorage;
 
   if (!gameState->isMuted)
   {

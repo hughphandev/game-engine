@@ -25,8 +25,30 @@ typedef DEBUG_PLATFORM_WRITE_FILE(debug_platform_write_file);
 DEBUG_PLATFORM_READ_FILE(DEBUGPlatformReadFile);
 DEBUG_PLATFORM_FREE_MEMORY(DEBUGPlatformFreeMemory);
 DEBUG_PLATFORM_WRITE_FILE(DEBUGPlatformWriteFile);
+
+enum
+{
+  DebugCycleCounter_GameUpdateAndRender,
+  DebugCycleCounter_RenderGroupOutput,
+  DebugCycleCounter_Count,
+};
+
+struct debug_cycle_counter
+{
+  u64 cycleCount;
+  u32 hitCount;
+};
+
+extern struct game_memory* g_memory;
+#if _MSC_VER
+#define BEGIN_TIMER_BLOCK(ID) u64 startCycleCounter##ID = __rdtsc();
+#define END_TIMER_BLOCK(ID) g_memory->counter[DebugCycleCounter_##ID].cycleCount += __rdtsc() - startCycleCounter##ID; ++g_memory->counter[DebugCycleCounter_##ID].hitCount;
+#else
+#define BEGIN_TIMER_BLOCK(ID)
+#define END_TIMER_BLOCK(ID) 
 #endif
 
+#endif
 
 struct game_sound_output
 {
@@ -222,6 +244,7 @@ struct wav_fmt
 #pragma pack(pop)
 
 
+
 struct game_memory
 {
   bool isInit;
@@ -235,6 +258,9 @@ struct game_memory
   debug_platform_free_memory* DEBUGPlatformFreeMemory;
   debug_platform_read_file* DEBUGPlatformReadFile;
   debug_platform_write_file* DEBUGPlatformWriteFile;
+#if INTERNAL
+  debug_cycle_counter counter[DebugCycleCounter_Count];
+#endif
 };
 
 struct level
@@ -243,10 +269,10 @@ struct level
   entity* entities;
 };
 
-#define GAME_UPDATE_AND_RENDER(name) void name(game_memory* gameMemory, game_offscreen_buffer* buffer, game_input input)
+#define GAME_UPDATE_AND_RENDER(name) void name(game_memory* memory, game_offscreen_buffer* buffer, game_input input)
 typedef GAME_UPDATE_AND_RENDER(game_update_and_render);
 
-#define GAME_OUTPUT_SOUND(name) void name(game_memory* gameMemory, game_sound_output* soundBuffer)
+#define GAME_OUTPUT_SOUND(name) void name(game_memory* memory, game_sound_output* soundBuffer)
 typedef GAME_OUTPUT_SOUND(game_output_sound);
 
 extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender);

@@ -730,6 +730,7 @@ inline void DrawBitmap(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, v2 minP
 
 static void RenderGroupOutput(render_group* renderGroup, loaded_bitmap* drawBuffer)
 {
+  BEGIN_TIMER_BLOCK(RenderGroupOutput);
 
   for (int index = 0; index < renderGroup->pushBuffer.used;)
   {
@@ -803,6 +804,8 @@ static void RenderGroupOutput(render_group* renderGroup, loaded_bitmap* drawBuff
       INVALID_DEFAULT_CASE;
     }
   }
+
+  END_TIMER_BLOCK(RenderGroupOutput);
 }
 
 void* PushRenderElement_(render_group* renderGroup, size_t size, render_entry_type type)
@@ -817,9 +820,9 @@ void* PushRenderElement_(render_group* renderGroup, size_t size, render_entry_ty
   {
     INVALID_CODE_PATH;
   }
-
   return result + 1;
 }
+
 #define PUSH_RENDER_ELEMENT(renderGroup, type) (type*)PushRenderElement_(renderGroup, sizeof(type), RENDER_TYPE_##type) 
 
 inline render_entry_clear* Clear(render_group* renderGroup, v4 color)
