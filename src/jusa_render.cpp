@@ -93,37 +93,32 @@ inline u32 AlphaBlend(u32 color, u32 baseColor)
   return result;
 }
 
-void DrawLine(loaded_bitmap* drawBuffer, v2 from, v2 to, u32 lineColor)
+void DrawLine(loaded_bitmap* drawBuffer, v2 from, v2 to, v4 color = V4(1, 1, 1, 1))
 {
   //NOTE: this will draw line in screen coord
-  u32* pixel = (u32*)drawBuffer->pixel;
-  if (from.x == to.x)
+  int scrMax = (drawBuffer->width * drawBuffer->height) - 1;
+  v2 d = to - from;
+  float length = Length(d);
+  if (d.y == 0)
   {
-    int startY = (int)Round(Min(from.y, to.y));
-    int endY = (int)Round(Max(from.y, to.y));
-    int x = (int)Round(from.x);
-    int screenBound = drawBuffer->width * drawBuffer->height;
-    for (int i = startY; i < endY; ++i)
+    for (float x = from.x; x < to.x; ++x)
     {
-      int pixelIndex = i * drawBuffer->width + x;
-      if (pixelIndex >= 0 && pixelIndex < screenBound)
+      int index = (int)(from.y * drawBuffer->width + x);
+      if (index >= 0 && index <= scrMax)
       {
-        pixel[i * drawBuffer->width + x] = lineColor;
+        drawBuffer->pixel[index] = color.ToU32();
       }
     }
   }
   else
   {
-    float a = (to.y - from.y) / (to.x - from.x);
-    float b = from.y - (a * from.x);
-    int startX = (int)Round(Min(from.x, to.x));
-    int endX = (int)Round(Max(from.x, to.x));
-    for (int i = startX; i < endX; ++i)
+    float tStep = 1.0f / d.y;
+    for (v2 pos = from; pos.y < to.y; pos += tStep * d)
     {
-      int y = (int)Round(a * (float)i + b);
-      if (i >= 0 && i < drawBuffer->width && y >= 0 && y < drawBuffer->height)
+      int index = (int)(pos.y * drawBuffer->width + pos.x);
+      if (index >= 0 && index <= scrMax)
       {
-        pixel[y * drawBuffer->width + i] = lineColor;
+        drawBuffer->pixel[index] = color.ToU32();
       }
     }
   }
@@ -273,8 +268,8 @@ mat4 GetPerspectiveMatrix(camera* cam)
   mat4 result = {};
   result.r0 = V4(s, 0, 0, 0);
   result.r1 = V4(0, s * a, 0, 0);
-  result.r2 = V4(0, 0, -cam->zFar / deltaZ, -1);
-  result.r3 = V4(0, 0, -(cam->zFar * cam->zNear) / deltaZ, 0);
+  result.r2 = V4(0, 0, -cam->zFar / deltaZ, (cam->zFar * cam->zNear) / deltaZ);
+  result.r3 = V4(0, 0, -1, 0);
 
   return result;
 }
@@ -316,7 +311,7 @@ mat4 GetLookAtMatrix(v3 pos, v3 target, v3 up)
   return result;
 }
 
-inline v4 WorldPointToScreen(camera* cam, v3 point)
+inline v3 WorldPointToNDC(camera* cam, v3 point)
 {
   mat4 proj = GetPerspectiveMatrix(cam);
   mat4 trans = GetTranslateMatrix(cam->pos);
@@ -326,9 +321,21 @@ inline v4 WorldPointToScreen(camera* cam, v3 point)
   v4 homoPoint = proj * view * trans * V4(point, 1);
   homoPoint.xyz /= homoPoint.w;
 
-  //NOTE: transform from NDC to screen coordinate
-  homoPoint.xy = cam->size * (0.5f * (homoPoint.xy + 1.0f));
-  return homoPoint;
+  //TODO: consider scale z from 0 to 1
+  return V3(homoPoint.xy, homoPoint.w);
+}
+
+inline v2 NDCPointToScreen(camera* cam, v3 point)
+{
+  return cam->size * (0.5f * (point.xy + 1.0f));
+}
+
+inline v2 WorldPointToScreen(camera* cam, v3 point)
+{
+  v3 ndc = WorldPointToNDC(cam, point);
+  v2 result = NDCPointToScreen(cam, ndc);
+
+  return result;
 }
 
 inline v2 ScreenPointToWorld(camera* cam, v2 point)
@@ -394,42 +401,53 @@ v4 BiasNormal(v4 normal)
   return V4((2.0f * normal.xyz) - 1.0f, normal.w);
 }
 
-void DrawScreenBitmap(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, scr_rect bound)
+void DrawFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* cam, flat_quad bound)
 {
   v2 scrMax = V2(drawBuffer->width - 1, drawBuffer->height - 1);
   v2 bitmapMax = V2(bitmap->width - 1, bitmap->height - 1);
 
-  float startY = Ceil(bound.p0.scr.y);
-  float endY = Ceil(bound.p1.scr.y);
+  v3 uv3[4];
+  for (i32 i = 0; i < 4; ++i)
+  {
+    //TODO: Perspective correct
+    bound.p[i].pos.xy = NDCPointToScreen(cam, bound.p[i].pos);
+    uv3[i] = V3(bound.p[i].uv, bound.p[i].pos.z);
+  }
 
-  v2 scrDeltaL = bound.p1.scr - bound.p0.scr;
-  v2 scrDeltaR = bound.p3.scr - bound.p2.scr;
+  float startY = Ceil(bound.p0.pos.y);
+  float endY = Ceil(bound.p1.pos.y);
 
-  v3 uvDeltaL = bound.p1.uv - bound.p0.uv;
-  v3 uvDeltaR = bound.p3.uv - bound.p2.uv;
+  v3 scrDeltaL = bound.p1.pos - bound.p0.pos;
+  v3 scrDeltaR = bound.p3.pos - bound.p2.pos;
+
+  v3 uvDeltaL = uv3[1] - uv3[0];
+  v3 uvDeltaR = uv3[3] - uv3[2];
 
   float tStepYL = (1.0f / scrDeltaL.y);
   float tStepYR = (1.0f / scrDeltaR.y);
   v3 uvStepYL = uvDeltaL * tStepYL;
   v3 uvStepYR = uvDeltaR * tStepYR;
 
-  v3 uvPreStepYL = uvDeltaL * (startY - bound.p0.scr.y) * tStepYL;
-  v3 uvPreStepYR = uvDeltaR * (startY - bound.p2.scr.y) * tStepYR;
+  v3 uvPreStepYL = uvDeltaL * (startY - bound.p0.pos.y) * tStepYL;
+  v3 uvPreStepYR = uvDeltaR * (startY - bound.p2.pos.y) * tStepYR;
 
-  v3 uvStartX = bound.p0.uv + uvPreStepYL;
-  v3 uvEndX = bound.p2.uv + uvPreStepYR;
+  v3 uvStartX = uv3[0] + uvPreStepYL;
+  v3 uvEndX = uv3[2] + uvPreStepYR;
 
   for (float y = startY; y < endY; ++y, uvStartX += uvStepYL, uvEndX += uvStepYR)
   {
-    float startX = Lerp(bound.p0.scr.x, bound.p1.scr.x, tStepYL * (y - bound.p0.scr.y));
+    float startX = Lerp(bound.p0.pos.x, bound.p1.pos.x, tStepYL * (y - bound.p0.pos.y));
 
-    float endX = Lerp(bound.p2.scr.x, bound.p3.scr.x, tStepYR * (y - bound.p2.scr.y));
+    float endX = Lerp(bound.p2.pos.x, bound.p3.pos.x, tStepYR * (y - bound.p2.pos.y));
     for (float x = startX; x < endX; ++x)
     {
+      BEGIN_TIMER_BLOCK(PixelFill);
+
       // mapping
       v3 uvPos = Lerp(uvStartX, uvEndX, (x - startX) / (endX - startX));
       v2 scrPos = Clamp(V2(x, y), V2(0, 0), scrMax);
 
+      //NOTE: revert uv to uv coordinate
       v2 bmPos = (uvPos.xy / uvPos.z) * bitmapMax;
 
       i32 xFloor = (i32)(bmPos.x);
@@ -455,74 +473,76 @@ void DrawScreenBitmap(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, scr_rect
 
       v4 linearCol = AlphaBlend(texel, dest);
       *screenPixel = Linear1ToSRGB1(linearCol).ToU32();
+
+      END_TIMER_BLOCK(PixelFill)
     }
   }
 }
 
 
-void DrawTriangle(loaded_bitmap* drawBuffer, camera* cam, triangle2 tri, v4 color, loaded_bitmap* bitmap, loaded_bitmap* normalMap, environment_map* top, environment_map* middle, environment_map* bottom)
+void DrawTriangle(loaded_bitmap* drawBuffer, camera* cam, triangle tri, v4 color, loaded_bitmap* bitmap, loaded_bitmap* normalMap, environment_map* top, environment_map* middle, environment_map* bottom)
 {
-  v3 uv[3];
-  for (i32 i = 0; i < 3; ++i)
-  {
-    float zInv = 1.0f / tri.scrP[i].w;
-    uv[i] = V3(tri.uvP[i] * zInv, zInv);
-  }
-
-  i32 count = ARRAY_COUNT(tri.scrP);
+  i32 count = ARRAY_COUNT(tri.p);
   for (i32 i = 0; i < count; ++i)
   {
     for (i32 j = i + 1; j < count; ++j)
     {
-      if (tri.scrP[i].y > tri.scrP[j].y)
+      if (tri.p[i].pos.y > tri.p[j].pos.y)
       {
-        Swap(&tri.scrP[i], &tri.scrP[j]);
-        Swap(&uv[i], &uv[j]);
+        Swap(&tri.p[i], &tri.p[j]);
       }
     }
   }
 
-  float tScr = (tri.scrP[1].y - tri.scrP[0].y) / (tri.scrP[2].y - tri.scrP[0].y);
+  for (i32 i = 0; i < count; ++i)
+  {
+    //NOTE: convert uv propotion to screen coordinate
+    float zInv = 1.0f / tri.p[i].pos.z;
+    tri.p[i].uv *= zInv;
+    tri.p[i].pos.z = zInv;
+  }
 
-  v4 scrMiddle = Lerp(tri.scrP[0], tri.scrP[2], tScr);
-  v3 uvMiddle = Lerp(uv[0], uv[2], tScr);
+  float tScr = (tri.p[1].pos.y - tri.p[0].pos.y) / (tri.p[2].pos.y - tri.p[0].pos.y);
 
-  v4 scrMiddleL;
-  v3 uvMiddleL;
+  v3 scrMiddle = Lerp(tri.p[0].pos, tri.p[2].pos, tScr);
+  v2 uvMiddle = Lerp(tri.p[0].uv, tri.p[2].uv, tScr);
 
-  v4 scrMiddleR;
-  v3 uvMiddleR;
+  v3 scrMiddleL;
+  v2 uvMiddleL;
 
-  if (scrMiddle.x < tri.scrP[1].x)
+  v3 scrMiddleR;
+  v2 uvMiddleR;
+
+  if (scrMiddle.x < tri.p[1].pos.x)
   {
     scrMiddleL = scrMiddle;
-    scrMiddleR = tri.scrP[1];
+    scrMiddleR = tri.p[1].pos;
 
     uvMiddleL = uvMiddle;
-    uvMiddleR = uv[1];
+    uvMiddleR = tri.p[1].uv;
   }
   else
   {
-    scrMiddleL = tri.scrP[1];
+    scrMiddleL = tri.p[1].pos;
     scrMiddleR = scrMiddle;
 
-    uvMiddleL = uv[1];
+    uvMiddleL = tri.p[1].uv;
     uvMiddleR = uvMiddle;
   }
 
-    scr_rect bound1;
-    bound1.p0 = { tri.scrP[0].xy, uv[0] };
-    bound1.p1 = { scrMiddleL.xy, uvMiddleL };
-    bound1.p2 = { tri.scrP[0].xy, uv[0] };
-    bound1.p3 = { scrMiddleR.xy, uvMiddleR };
-    DrawScreenBitmap(drawBuffer, bitmap, bound1);
+  flat_quad bound1;
+  bound1.p0 = tri.p0;
+  bound1.p1 = { scrMiddleL, uvMiddleL };
+  bound1.p2 = tri.p0;
+  bound1.p3 = { scrMiddleR, uvMiddleR };
+  DrawFlatQuadTex(drawBuffer, bitmap, cam, bound1);
 
-    scr_rect bound2;
-    bound2.p0 = { scrMiddleL.xy, uvMiddleL };
-    bound2.p1 = { tri.scrP[2].xy, uv[2] };
-    bound2.p2 = { scrMiddleR.xy, uvMiddleR };
-    bound2.p3 = { tri.scrP[2].xy, uv[2] };
-    DrawScreenBitmap(drawBuffer, bitmap, bound2);
+  flat_quad bound2;
+  bound2.p0 = { scrMiddleL, uvMiddleL };
+  bound2.p1 = tri.p2;
+  bound2.p2 = { scrMiddleR, uvMiddleR };
+  bound2.p3 = tri.p2;
+  DrawFlatQuadTex(drawBuffer, bitmap, cam, bound2);
 }
 
 void DrawRectSlowly(loaded_bitmap* drawBuffer, camera* cam, v2 origin, v2 xAxis, v2 yAxis, v4 color, loaded_bitmap* bitmap, loaded_bitmap* normalMap, environment_map* top, environment_map* middle, environment_map* bottom)
@@ -576,10 +596,10 @@ void DrawRectSlowly(loaded_bitmap* drawBuffer, camera* cam, v2 origin, v2 xAxis,
 
       v2 d = screenP - origin;
 
-      float edge1 = Inner(-Perp(xAxis), d);
-      float edge2 = Inner(Perp(yAxis), d - yAxis);
-      float edge3 = Inner(-Perp(yAxis), d - xAxis);
-      float edge4 = Inner(Perp(xAxis), d - xAxis - yAxis);
+      float edge1 = Dot(-Perp(xAxis), d);
+      float edge2 = Dot(Perp(yAxis), d - yAxis);
+      float edge3 = Dot(-Perp(yAxis), d - xAxis);
+      float edge4 = Dot(Perp(xAxis), d - xAxis - yAxis);
 
       if (edge1 < 0 && edge2 < 0 && edge3 < 0 && edge4 < 0)
       {
@@ -793,10 +813,16 @@ static void RenderGroupOutput(render_group* renderGroup, loaded_bitmap* drawBuff
           DrawRectangle(drawBuffer, entry->point[i].xy - halfSize, entry->point[i].xy + halfSize, yellow);
         }
 
-        triangle2 tri1 = { { entry->point[0], entry->point[1], entry->point[2] }, { V2(0, 0), V2(1, 0), V2(1, 1) } };
+        triangle tri1;
+        tri1.p0 = { entry->point[0], V2(0, 0) };
+        tri1.p1 = { entry->point[1], V2(1, 0) };
+        tri1.p2 = { entry->point[2], V2(1, 1) };
         DrawTriangle(drawBuffer, renderGroup->cam, tri1, entry->col, entry->bitmap, entry->normalMap, entry->top, entry->middle, entry->bottom);
 
-        triangle2 tri2 = { { entry->point[0], entry->point[2], entry->point[3] }, { V2(0, 0), V2(1, 1), V2(0, 1) } };
+        triangle tri2;
+        tri2.p0 = { entry->point[0], V2(0, 0) };
+        tri2.p1 = { entry->point[2], V2(1, 1) };
+        tri2.p2 = { entry->point[3], V2(0, 1) };
         DrawTriangle(drawBuffer, renderGroup->cam, tri2, entry->col, entry->bitmap, entry->normalMap, entry->top, entry->middle, entry->bottom);
 
       } break;
@@ -855,8 +881,8 @@ inline render_entry_bitmap* PushBitmap(render_group* renderGroup, loaded_bitmap*
     entry->bitmap = bitmap;
     v3 halfSize = 0.5f * V3(size, 0);
 
-    v2 minP = WorldPointToScreen(renderGroup->cam, pos - halfSize).xy - V2(bitmap->width, bitmap->height) * bitmap->align;
-    v2 maxP = WorldPointToScreen(renderGroup->cam, pos + halfSize).xy - V2(bitmap->width, bitmap->height) * bitmap->align;
+    v2 minP = WorldPointToScreen(renderGroup->cam, pos - halfSize) - V2(bitmap->width, bitmap->height) * bitmap->align;
+    v2 maxP = WorldPointToScreen(renderGroup->cam, pos + halfSize) - V2(bitmap->width, bitmap->height) * bitmap->align;
 
     entry->minP = minP;
     entry->maxP = maxP;
@@ -872,8 +898,8 @@ inline render_entry_rectangle* PushRect(render_group* renderGroup, v3 pos, v2 si
   if (entry)
   {
     v3 halfSize = 0.5f * V3(size, 0);
-    entry->minP = WorldPointToScreen(renderGroup->cam, pos - halfSize).xy;
-    entry->maxP = WorldPointToScreen(renderGroup->cam, pos + halfSize).xy;
+    entry->minP = WorldPointToScreen(renderGroup->cam, pos - halfSize);
+    entry->maxP = WorldPointToScreen(renderGroup->cam, pos + halfSize);
     entry->color = col;
   }
 
@@ -886,8 +912,8 @@ inline render_entry_rectangle_outline* PushRectOutline(render_group* renderGroup
   if (entry)
   {
     v3 halfSize = 0.5f * V3(size, 0);
-    entry->minP = WorldPointToScreen(renderGroup->cam, pos - halfSize).xy;
-    entry->maxP = WorldPointToScreen(renderGroup->cam, pos + halfSize).xy;
+    entry->minP = WorldPointToScreen(renderGroup->cam, pos - halfSize);
+    entry->maxP = WorldPointToScreen(renderGroup->cam, pos + halfSize);
     entry->color = col;
     entry->thickness = thickness;
   }
@@ -900,10 +926,10 @@ inline render_entry_coordinate_system* CoordinateSystem(render_group* renderGrou
   render_entry_coordinate_system* entry = PUSH_RENDER_ELEMENT(renderGroup, render_entry_coordinate_system);
   if (entry)
   {
-    entry->point[0] = WorldPointToScreen(renderGroup->cam, origin);
-    entry->point[1] = WorldPointToScreen(renderGroup->cam, origin + xAxis);
-    entry->point[2] = WorldPointToScreen(renderGroup->cam, origin + yAxis + xAxis);
-    entry->point[3] = WorldPointToScreen(renderGroup->cam, origin + yAxis);
+    entry->point[0] = WorldPointToNDC(renderGroup->cam, origin);
+    entry->point[1] = WorldPointToNDC(renderGroup->cam, origin + xAxis);
+    entry->point[2] = WorldPointToNDC(renderGroup->cam, origin + yAxis + xAxis);
+    entry->point[3] = WorldPointToNDC(renderGroup->cam, origin + yAxis);
     entry->col = col;
     entry->bitmap = bitmap;
     entry->normalMap = normalMap;

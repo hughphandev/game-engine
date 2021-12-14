@@ -30,6 +30,7 @@ enum
 {
   DebugCycleCounter_GameUpdateAndRender,
   DebugCycleCounter_RenderGroupOutput,
+  DebugCycleCounter_PixelFill,
   DebugCycleCounter_Count,
 };
 

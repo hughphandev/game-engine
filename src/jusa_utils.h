@@ -27,6 +27,7 @@ inline uint32_t SafeTruncateUInt64(uint64_t value)
   return (uint32_t)value;
 }
 
+//NOTE: non-pointer type only
 #define DEFINE_SWAP(T)  void Swap(T* l, T* r){ T temp = *l; *l = *r; *r = temp; }
 
 DEFINE_SWAP(float)

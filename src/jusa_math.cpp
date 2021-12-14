@@ -151,7 +151,7 @@ inline v2 Clamp(v2 a, v2 min, v2 max)
   return result;
 }
 
-inline float Inner(v2 a, v2 b)
+inline float Dot(v2 a, v2 b)
 {
   return (a.x * b.x + a.y * b.y);
 }
@@ -605,6 +605,7 @@ inline mat4 operator*(mat4 a, mat4 b)
   }
   return result;
 }
+
 inline mat4 operator+(mat4 a, mat4 b)
 {
   mat4 result;

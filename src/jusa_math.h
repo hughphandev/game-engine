@@ -4,7 +4,7 @@
 #include "jusa_types.h"
 #include "jusa_utils.h"
 
-#define DEFINE_LERP(T) T Lerp(T a, T b, float t) { return (1 - t) * a + t * b; }
+#define DEFINE_LERP(T) T Lerp(T a, T b, float t) { return (a + ((b - a) * t)); }
 
 #define PI 3.141592653589793f
 
@@ -59,7 +59,7 @@ union v2
 };
 
 inline v2 Round(v2 value);
-inline float Inner(v2 a, v2 b);
+inline float Dot(v2 a, v2 b);
 inline v2 V2(float x, float y);
 inline v2 V2(i32 x, i32 y);
 inline v2 operator*(v2 a, v2 b);

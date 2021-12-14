@@ -979,6 +979,7 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
 
             input->dMouseX = mousePoint.x - midPoint.x;
             input->dMouseY = mousePoint.y - midPoint.y;
+            ShowCursor(false);
           }
 
           // Note: Update the game in fixed interval

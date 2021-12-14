@@ -31,18 +31,24 @@ struct environment_map
 
 struct vertex
 {
-  v2 scr;
-  v3 uv;
+  //NOTE: assume pos in NDC
+  v3 pos;
+  v2 uv;
+};
+DEFINE_SWAP(vertex)
+
+union triangle
+{
+  struct
+  {
+    vertex p0, p1, p2;
+  };
+  vertex p[3];
 };
 
-struct triangle2
+union flat_quad
 {
-  v4 scrP[3];
-  v2 uvP[3];
-};
-
-union scr_rect
-{
+  //NOTE: assume p1, p2 has the same y in screen coordinate
   vertex p[4];
   struct
   {
@@ -78,7 +84,7 @@ struct render_entry_saturation
 //NOTE: for testing purpose only
 struct render_entry_coordinate_system
 {
-  v4 point[4];
+  v3 point[4];
 
   v4 col;
   loaded_bitmap* bitmap;
@@ -129,7 +135,6 @@ struct camera
 struct render_group
 {
   camera* cam;
-
   memory_arena pushBuffer;
 };
 

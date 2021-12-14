@@ -59,7 +59,7 @@ void MoveAndSlide(entity* e, v2 motion, entity* active[], size_t activeCount, fl
     {
       moveLeft = motion * (1.0f - tMin);
       moveBefore = motion * tMin;
-      motion = (moveLeft - minContactNormal * Inner(minContactNormal, moveLeft));
+      motion = (moveLeft - minContactNormal * Dot(minContactNormal, moveLeft));
 
       dp += moveBefore * timeStep;
 
@@ -74,7 +74,7 @@ void MoveAndSlide(entity* e, v2 motion, entity* active[], size_t activeCount, fl
   } while (Abs(moveLeft) > 0.0001f);
 
   e->pos.xy += dp;
-  e->vel.xy = (orgMotion - minContactNormal * Inner(minContactNormal, orgMotion));
+  e->vel.xy = (orgMotion - minContactNormal * Dot(minContactNormal, orgMotion));
 }
 
 #define RIFF_CODE(a, b, c, d) (((u32)(a) << 0) | ((u32)(b) << 8) | ((u32)(c) << 16) | ((u32)(d) << 24)) 
@@ -607,20 +607,20 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
   RenderGroupOutput(renderGroup, &drawBuffer);
 
-  for (i32 y = 0; y < 10; ++y)
-  {
-    for (i32 x = 0; x < 10; ++x)
-    {
-      i32 currentX = input.mouseX + x;
-      i32 currentY = input.mouseY + y;
-      i32 index = currentY * drawBuffer.width + currentX;
-      if (index >= 0 && index < drawBuffer.width * drawBuffer.height)
-      {
+  // for (i32 y = 0; y < 10; ++y)
+  // {
+  //   for (i32 x = 0; x < 10; ++x)
+  //   {
+  //     i32 currentX = input.mouseX + x;
+  //     i32 currentY = input.mouseY + y;
+  //     i32 index = currentY * drawBuffer.width + currentX;
+  //     if (index >= 0 && index < drawBuffer.width * drawBuffer.height)
+  //     {
 
-        drawBuffer.pixel[index] = 0xFFFFFFFF;
-      }
-    }
-  }
+  //       drawBuffer.pixel[index] = 0xFFFFFFFF;
+  //     }
+  //   }
+  // }
 
 #if 0
   //NOTE: turn on to see envmap
