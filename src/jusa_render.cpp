@@ -480,7 +480,7 @@ void DrawFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* c
 }
 
 
-void DrawTriangle(loaded_bitmap* drawBuffer, camera* cam, triangle tri, v4 color, loaded_bitmap* bitmap, loaded_bitmap* normalMap, environment_map* top, environment_map* middle, environment_map* bottom)
+void DrawTriangle(loaded_bitmap* drawBuffer, camera* cam, triangle tri, v4 color, loaded_bitmap* bitmap)
 {
   i32 count = ARRAY_COUNT(tri.p);
   for (i32 i = 0; i < count; ++i)
@@ -543,6 +543,25 @@ void DrawTriangle(loaded_bitmap* drawBuffer, camera* cam, triangle tri, v4 color
   bound2.p2 = { scrMiddleR, uvMiddleR };
   bound2.p3 = tri.p2;
   DrawFlatQuadTex(drawBuffer, bitmap, cam, bound2);
+}
+
+void Draw(loaded_bitmap* drawBuffer, camera* cam, vertex* ver, i32 verCount, i32* index, i32 indexCount, loaded_bitmap* texture, v4 color)
+{
+
+  for (int i = 0; i < verCount; ++i)
+  {
+    ver[i].pos = WorldPointToNDC(cam, ver[i].pos);
+  }
+
+  for (int i = 0; i < indexCount; i += 3)
+  {
+    triangle tri;
+    tri.p0 = ver[index[i]];
+    tri.p1 = ver[index[i + 1]];
+    tri.p2 = ver[index[i + 2]];
+
+    DrawTriangle(drawBuffer, cam, tri, color, texture);
+  }
 }
 
 void DrawRectSlowly(loaded_bitmap* drawBuffer, camera* cam, v2 origin, v2 xAxis, v2 yAxis, v4 color, loaded_bitmap* bitmap, loaded_bitmap* normalMap, environment_map* top, environment_map* middle, environment_map* bottom)
@@ -805,26 +824,7 @@ static void RenderGroupOutput(render_group* renderGroup, loaded_bitmap* drawBuff
         render_entry_coordinate_system* entry = (render_entry_coordinate_system*)((u8*)renderGroup->pushBuffer.base + index);
         index += sizeof(*entry);
 
-        v2 halfSize = { 2, 2 };
-        v4 yellow = { 1.0f, 1.0f, 0.0f, 1.0f };
-        i32 pointCount = ARRAY_COUNT(entry->point);
-        for (i32 i = 0; i < pointCount; ++i)
-        {
-          DrawRectangle(drawBuffer, entry->point[i].xy - halfSize, entry->point[i].xy + halfSize, yellow);
-        }
-
-        triangle tri1;
-        tri1.p0 = { entry->point[0], V2(0, 0) };
-        tri1.p1 = { entry->point[1], V2(1, 0) };
-        tri1.p2 = { entry->point[2], V2(1, 1) };
-        DrawTriangle(drawBuffer, renderGroup->cam, tri1, entry->col, entry->bitmap, entry->normalMap, entry->top, entry->middle, entry->bottom);
-
-        triangle tri2;
-        tri2.p0 = { entry->point[0], V2(0, 0) };
-        tri2.p1 = { entry->point[2], V2(1, 1) };
-        tri2.p2 = { entry->point[3], V2(0, 1) };
-        DrawTriangle(drawBuffer, renderGroup->cam, tri2, entry->col, entry->bitmap, entry->normalMap, entry->top, entry->middle, entry->bottom);
-
+        Draw(drawBuffer, renderGroup->cam, entry->ver, entry->verCount, entry->index, entry->indexCount, entry->bitmap, entry->col);
       } break;
 
       INVALID_DEFAULT_CASE;
@@ -921,21 +921,18 @@ inline render_entry_rectangle_outline* PushRectOutline(render_group* renderGroup
   return entry;
 }
 
-inline render_entry_coordinate_system* CoordinateSystem(render_group* renderGroup, v3 origin, v3 xAxis, v3 yAxis, v3 zAxis, v4 col, loaded_bitmap* bitmap, loaded_bitmap* normalMap, environment_map* top, environment_map* middle, environment_map* bottom)
+inline render_entry_coordinate_system* CoordinateSystem(render_group* renderGroup, vertex* ver, i32 verCount, i32* index, i32 indexCount, v4 col, loaded_bitmap* bitmap)
 {
   render_entry_coordinate_system* entry = PUSH_RENDER_ELEMENT(renderGroup, render_entry_coordinate_system);
   if (entry)
   {
-    entry->point[0] = WorldPointToNDC(renderGroup->cam, origin);
-    entry->point[1] = WorldPointToNDC(renderGroup->cam, origin + xAxis);
-    entry->point[2] = WorldPointToNDC(renderGroup->cam, origin + yAxis + xAxis);
-    entry->point[3] = WorldPointToNDC(renderGroup->cam, origin + yAxis);
+    entry->ver = ver;
+    entry->verCount = verCount;
+    entry->index = index;
+    entry->indexCount = indexCount;
+
     entry->col = col;
     entry->bitmap = bitmap;
-    entry->normalMap = normalMap;
-    entry->top = top;
-    entry->middle = middle;
-    entry->bottom = bottom;
   }
 
   return entry;

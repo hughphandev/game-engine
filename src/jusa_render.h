@@ -84,15 +84,13 @@ struct render_entry_saturation
 //NOTE: for testing purpose only
 struct render_entry_coordinate_system
 {
-  v3 point[4];
+  vertex* ver;
+  i32 verCount;
+  i32* index;
+  i32 indexCount;
 
   v4 col;
   loaded_bitmap* bitmap;
-  loaded_bitmap* normalMap;
-
-  environment_map* top;
-  environment_map* middle;
-  environment_map* bottom;
 };
 
 struct render_entry_rectangle

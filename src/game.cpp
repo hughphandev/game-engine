@@ -590,16 +590,25 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
   renderGroup->cam->pos += Normalize(dir.y * renderGroup->cam->dir + dir.x * Cross(renderGroup->cam->dir, V3(0, 1, 0))) * input.dt;
 
-  float angle = PI / 2.0f; //0.5f * gameState->time;
-  v3 origin = V3(0.0f, 0.0f, 0.0f);
-  v3 yAxis = V3(0, 1, 0);
-  v3 xAxis = Normalize(V3(Sin(angle), 0, Cos(angle)));
-  v3 zAxis = V3(0, 0, 1);
-  origin -= (0.5f * xAxis + 0.5f * yAxis);
-  v4 col = V4(1.0f, 1.0f, 1.0f, 1.0f);
-  CoordinateSystem(renderGroup, origin, xAxis, yAxis, zAxis, col, &gameState->bricks, 0, 0, 0, 0);
 
-  // CoordinateSystem(renderGroup, origin, xAxis, yAxis, zAxis, col, &gameState->testDiffuse, &gameState->testNormal, &tranState.envMap[2], &tranState.envMap[1], &tranState.envMap[0]);
+  vertex ver[4];
+  ver[0].pos = { 0.0f, 0.0f, 0.0f };
+  ver[1].pos = { 1.0f, 0.0f, 0.0f };
+  ver[2].pos = { 1.0f, 1.0f, 0.0f };
+  ver[3].pos = { 0.0f, 1.0f, 0.0f };
+
+  ver[0].uv = { 0.0f, 0.0f };
+  ver[1].uv = { 1.0f, 0.0f };
+  ver[2].uv = { 1.0f, 1.0f };
+  ver[3].uv = { 0.0f, 1.0f };
+
+  i32 index[] = {
+    0, 1, 2,
+    0, 2, 3,
+  };
+
+  v4 col = V4(1.0f, 1.0f, 1.0f, 1.0f);
+  CoordinateSystem(renderGroup, ver, ARRAY_COUNT(ver), index, ARRAY_COUNT(index), col, &gameState->bricks);
 
   gameState->time += input.dt;
 
@@ -637,7 +646,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   }
 
   END_TIMER_BLOCK(GameUpdateAndRender);
-  }
+}
 
 void PlaySound(game_sound_output* soundBuffer, loaded_sound* sound)
 {
