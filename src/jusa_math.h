@@ -117,6 +117,7 @@ union v3
 
 inline v3 Round(v3 value);
 inline v3 Cross(v3 a, v3 b);
+inline float Dot(v3 a, v3 b);
 inline v3 V3(float x, float y, float z);
 inline v3 V3(v2 xy, float z);
 inline v3 operator*(v3 a, v3 b);

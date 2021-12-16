@@ -424,6 +424,11 @@ inline v3 Cross(v3 a, v3 b)
   return result;
 }
 
+inline float Dot(v3 a, v3 b)
+{
+  return (a.x * b.x) + (a.y * b.y) + (a.z * b.z);
+}
+
 inline v3 V3(float x, float y, float z)
 {
   return { x, y, z };

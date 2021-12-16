@@ -311,14 +311,21 @@ mat4 GetLookAtMatrix(v3 pos, v3 target, v3 up)
   return result;
 }
 
-inline v3 WorldPointToNDC(camera* cam, v3 point)
+inline v3 WorldPointToCamera(camera* cam, v3 point)
 {
-  mat4 proj = GetPerspectiveMatrix(cam);
+  //NOTE: camera position is (0, 0, 0), camera direction is z axis
   mat4 trans = GetTranslateMatrix(cam->pos);
   mat4 view = GetLookAtMatrix(cam->pos, cam->pos + cam->dir, V3(0, 1, 0));
+  v4 result = view * trans * V4(point, 1);
+  return result.xyz;
+}
 
-  //NOTE: transform from world coordinate to NDC
-  v4 homoPoint = proj * view * trans * V4(point, 1);
+inline v3 CameraPointToNDC(camera* cam, v3 point)
+{
+  //NOTE: transform from camera coordinate to NDC
+  mat4 proj = GetPerspectiveMatrix(cam);
+
+  v4 homoPoint = proj * V4(point, 1);
   homoPoint.xyz /= homoPoint.w;
 
   //TODO: consider scale z from 0 to 1
@@ -332,7 +339,7 @@ inline v2 NDCPointToScreen(camera* cam, v3 point)
 
 inline v2 WorldPointToScreen(camera* cam, v3 point)
 {
-  v3 ndc = WorldPointToNDC(cam, point);
+  v3 ndc = WorldPointToCamera(cam, point);
   v2 result = NDCPointToScreen(cam, ndc);
 
   return result;
@@ -545,12 +552,21 @@ void DrawTriangle(loaded_bitmap* drawBuffer, camera* cam, triangle tri, v4 color
   DrawFlatQuadTex(drawBuffer, bitmap, cam, bound2);
 }
 
+void ProcessTriangle(loaded_bitmap* drawBuffer, camera* cam, triangle tri, loaded_bitmap* texture, v4 color)
+{
+  for (int i = 0; i < ARRAY_COUNT(tri.p); ++i)
+  {
+    tri.p[i].pos = CameraPointToNDC(cam, tri.p[i].pos);
+  }
+  DrawTriangle(drawBuffer, cam, tri, color, texture);
+}
+
 void Draw(loaded_bitmap* drawBuffer, camera* cam, vertex* ver, i32 verCount, i32* index, i32 indexCount, loaded_bitmap* texture, v4 color)
 {
 
   for (int i = 0; i < verCount; ++i)
   {
-    ver[i].pos = WorldPointToNDC(cam, ver[i].pos);
+    ver[i].pos = WorldPointToCamera(cam, ver[i].pos);
   }
 
   for (int i = 0; i < indexCount; i += 3)
@@ -560,7 +576,13 @@ void Draw(loaded_bitmap* drawBuffer, camera* cam, vertex* ver, i32 verCount, i32
     tri.p1 = ver[index[i + 1]];
     tri.p2 = ver[index[i + 2]];
 
-    DrawTriangle(drawBuffer, cam, tri, color, texture);
+    v3 normal = Cross(tri.p1.pos - tri.p0.pos, tri.p2.pos - tri.p0.pos);
+
+    //NOTE: backface culling
+    if (Dot(tri.p0.pos, normal) < 0.0f)
+    {
+      ProcessTriangle(drawBuffer, cam, tri, texture, color);
+    }
   }
 }
 
