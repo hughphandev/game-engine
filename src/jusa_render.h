@@ -122,6 +122,8 @@ struct camera
   v3 pos;
   v2 rot;
 
+  float* zBuffer;
+
   float meterToPixel;
 
   float zNear, zFar;

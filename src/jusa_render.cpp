@@ -453,9 +453,21 @@ void DrawFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* c
       // mapping
       v3 uvPos = Lerp(uvStartX, uvEndX, (x - startX) / (endX - startX));
       v2 scrPos = Clamp(V2(x, y), V2(0, 0), scrMax);
+      i32 scrIndex = (i32)(scrPos.y * drawBuffer->width + scrPos.x);
 
-      //NOTE: revert uv to uv coordinate
-      v2 bmPos = (uvPos.xy / uvPos.z) * bitmapMax;
+      //NOTE: depth culling
+      float z = 1.0f/uvPos.z;
+      if (z < cam->zBuffer[scrIndex])
+      {
+        cam->zBuffer[scrIndex] = z;
+      }
+      else
+      {
+        continue;
+      }
+
+      //NOTE: convert uv from NDC to uv coordinate
+      v2 bmPos = (uvPos.xy * z) * bitmapMax;
 
       i32 xFloor = (i32)(bmPos.x);
       i32 yFloor = (i32)(bmPos.y);
@@ -466,13 +478,11 @@ void DrawFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* c
       bilinear_sample texelSample = BilinearSample(bitmap, xFloor, yFloor);
       v4 texel = SRGBBilinearBlend(texelSample, tX, tY);
 
-
       // texel = Hadamard(texel, color);
       texel.r = Clamp01(texel.r);
       texel.g = Clamp01(texel.g);
       texel.b = Clamp01(texel.b);
 
-      i32 scrIndex = (i32)(scrPos.y * drawBuffer->width + scrPos.x);
       u32* screenPixel = &drawBuffer->pixel[scrIndex];
       v4 dest = UnpackToRGBA255(*screenPixel);
 
@@ -563,6 +573,11 @@ void ProcessTriangle(loaded_bitmap* drawBuffer, camera* cam, triangle tri, loade
 
 void Draw(loaded_bitmap* drawBuffer, camera* cam, vertex* ver, i32 verCount, i32* index, i32 indexCount, loaded_bitmap* texture, v4 color)
 {
+
+  for(int i = 0; i < cam->size.x * cam->size.y; ++i)
+  {
+    cam->zBuffer[i] = INFINITY;
+  }
 
   for (int i = 0; i < verCount; ++i)
   {
@@ -964,7 +979,10 @@ inline render_group* InitRenderGroup(memory_arena* arena, size_t maxPushBufferSi
 {
   render_group* result = PUSH_TYPE(arena, render_group);
   InitMemoryArena(&result->pushBuffer, maxPushBufferSize, PUSH_SIZE(arena, maxPushBufferSize));
+
   result->cam = cam;
+  int camSizeIndex = (int)(cam->size.x * cam->size.y);
+  cam->zBuffer = PUSH_ARRAY(arena, float, camSizeIndex);
 
   return result;
 }

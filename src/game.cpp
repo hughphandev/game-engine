@@ -591,20 +591,32 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   renderGroup->cam->pos += Normalize(dir.y * renderGroup->cam->dir + dir.x * Cross(renderGroup->cam->dir, V3(0, 1, 0))) * input.dt;
 
 
-  vertex ver[4];
+  vertex ver[8];
   ver[0].pos = { 0.0f, 0.0f, 0.0f };
   ver[1].pos = { 1.0f, 0.0f, 0.0f };
   ver[2].pos = { 1.0f, 1.0f, 0.0f };
   ver[3].pos = { 0.0f, 1.0f, 0.0f };
+
+  ver[4].pos = { 0.0f, 0.0f, -1.0f };
+  ver[5].pos = { 1.0f, 0.0f, -1.0f };
+  ver[6].pos = { 1.0f, 1.0f, -1.0f };
+  ver[7].pos = { 0.0f, 1.0f, -1.0f };
 
   ver[0].uv = { 0.0f, 0.0f };
   ver[1].uv = { 1.0f, 0.0f };
   ver[2].uv = { 1.0f, 1.0f };
   ver[3].uv = { 0.0f, 1.0f };
 
+  ver[4].uv = { 0.0f, 0.0f };
+  ver[5].uv = { 1.0f, 0.0f };
+  ver[6].uv = { 1.0f, 1.0f };
+  ver[7].uv = { 0.0f, 1.0f };
+
   i32 index[] = {
     0, 1, 2,
     0, 2, 3,
+    4, 5, 6,
+    4, 6, 7,
   };
 
   v4 col = V4(1.0f, 1.0f, 1.0f, 1.0f);
