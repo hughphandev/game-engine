@@ -293,7 +293,7 @@ static void GameEditor(render_group* renderGroup, game_state* gameState, transie
   v2 tileIndex = GetTileIndex(world, pos);
   rec tileBox = GetTileBound(world, (i32)tileIndex.x, (i32)tileIndex.y);
 
-  PushRectOutline(renderGroup, V3(tileBox.pos, 0), tileBox.size, 1, { 1.0f, 1.0f, 1.0f, 1.0f });
+  // PushRectOutline(renderGroup, V3(tileBox.pos, 0), tileBox.size, 1, { 1.0f, 1.0f, 1.0f, 1.0f });
 
 
   if (input.mouseButtonState[0])
@@ -436,7 +436,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     gameState->cam.rFov = 0.5f * PI;
     gameState->cam.zNear = 0.5;
     gameState->cam.zFar = 20;
-    gameState->cam.pos = V3(0, 0, 5);
+    gameState->cam.pos = V3(0.5f, 0.5f, 1);
     gameState->cam.rot = {};
 
     world->tileCountX = 1024;
@@ -518,19 +518,19 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     {
       case ENTITY_PLAYER:
       {
-        PushBitmap(renderGroup, &gameState->knight, tranState.activeEntity[i]->pos, tranState.activeEntity[i]->size.xy);
+        // PushBitmap(renderGroup, &gameState->knight, tranState.activeEntity[i]->pos, tranState.activeEntity[i]->size.xy);
       } break;
 
       case ENTITY_WALL:
       {
-        PushBitmap(renderGroup, &gameState->wall, tranState.activeEntity[i]->pos, tranState.activeEntity[i]->size.xy);
+        // PushBitmap(renderGroup, &gameState->wall, tranState.activeEntity[i]->pos, tranState.activeEntity[i]->size.xy);
       } break;
 
       case ENTITY_PROJECTILE:
       case ENTITY_SWORD:
       {
         entity* it = tranState.activeEntity[i];
-        PushRect(renderGroup, it->pos, it->size.xy, { 1.0f, 1.0f, 1.0f, 1.0f });
+        // PushRect(renderGroup, it->pos, it->size.xy, { 1.0f, 1.0f, 1.0f, 1.0f });
       } break;
     }
   }

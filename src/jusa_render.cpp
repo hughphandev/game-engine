@@ -438,68 +438,259 @@ void DrawFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* c
   v3 uvPreStepYL = uvDeltaL * (startY - bound.p0.pos.y) * tStepYL;
   v3 uvPreStepYR = uvDeltaR * (startY - bound.p2.pos.y) * tStepYR;
 
-  v3 uvStartX = uv3[0] + uvPreStepYL;
-  v3 uvEndX = uv3[2] + uvPreStepYR;
+  v3 uvStart = uv3[0] + uvPreStepYL;
+  v3 uvEnd = uv3[2] + uvPreStepYR;
 
-  for (float y = startY; y < endY; ++y, uvStartX += uvStepYL, uvEndX += uvStepYR)
+#define PS(M, i) *((float*)(&M) + i)
+  __m128 zero_x4 = _mm_set_ps1(0.0f);
+  __m128 one_x4 = _mm_set_ps1(1.0f);
+  __m128 one255_x4 = _mm_set_ps1(255.0f);
+  __m128 inv255_x4 = _mm_set_ps1(1.0f / 255.0f);
+
+  __m128 scrMaxX_x4 = _mm_set_ps1(scrMax.x);
+  __m128 scrMaxY_x4 = _mm_set_ps1(scrMax.y);
+  __m128 bitmapMaxX_x4 = _mm_set_ps1(bitmapMax.x);
+  __m128 bitmapMaxY_x4 = _mm_set_ps1(bitmapMax.y);
+
+  __m128 scrWidth_x4 = _mm_set_ps1((float)drawBuffer->width);
+  __m128 scrHeight_x4 = _mm_set_ps1((float)drawBuffer->height);
+
+  for (float y = startY; y < endY; ++y, uvStart += uvStepYL, uvEnd += uvStepYR)
   {
     float startX = Lerp(bound.p0.pos.x, bound.p1.pos.x, tStepYL * (y - bound.p0.pos.y));
-
     float endX = Lerp(bound.p2.pos.x, bound.p3.pos.x, tStepYR * (y - bound.p2.pos.y));
-    for (float x = startX; x < endX; ++x)
+
+    __m128 startX_x4 = _mm_set_ps1(startX);
+    __m128 endX_x4 = _mm_set_ps1(endX);
+
+    __m128 uvStartX_x4 = _mm_set_ps1(uvStart.x);
+    __m128 uvStartY_x4 = _mm_set_ps1(uvStart.y);
+    __m128 uvStartZ_x4 = _mm_set_ps1(uvStart.z);
+
+    __m128 uvEndX_x4 = _mm_set_ps1(uvEnd.x);
+    __m128 uvEndY_x4 = _mm_set_ps1(uvEnd.y);
+    __m128 uvEndZ_x4 = _mm_set_ps1(uvEnd.z);
+
+    BEGIN_TIMER_BLOCK(PixelFill);
+    for (float x = startX; x < endX; x += 4)
     {
-      BEGIN_TIMER_BLOCK(PixelFill);
+      __m128 x_x4 = _mm_set_ps(x + 3, x + 2, x + 1, x);
+      __m128 y_x4 = _mm_set_ps1(y);
 
-      // mapping
-      v3 uvPos = Lerp(uvStartX, uvEndX, (x - startX) / (endX - startX));
-      v2 scrPos = Clamp(V2(x, y), V2(0, 0), scrMax);
-      i32 scrIndex = (i32)(scrPos.y * drawBuffer->width + scrPos.x);
 
-      //NOTE: depth culling
-      float z = 1.0f/uvPos.z;
-      if (z < cam->zBuffer[scrIndex])
-      {
-        cam->zBuffer[scrIndex] = z;
-      }
-      else
-      {
-        continue;
-      }
+      __m128 tUV_x4 = _mm_div_ps(_mm_sub_ps(x_x4, startX_x4), _mm_sub_ps(endX_x4, startX_x4));
+
+      __m128 uvPosX_x4 = _mm_add_ps(uvStartX_x4, _mm_mul_ps(tUV_x4, _mm_sub_ps(uvEndX_x4, uvStartX_x4)));
+      __m128 uvPosY_x4 = _mm_add_ps(uvStartY_x4, _mm_mul_ps(tUV_x4, _mm_sub_ps(uvEndY_x4, uvStartY_x4)));
+      __m128 uvPosZ_x4 = _mm_add_ps(uvStartZ_x4, _mm_mul_ps(tUV_x4, _mm_sub_ps(uvEndZ_x4, uvStartZ_x4)));
+
+      // __m128 scrPosX_x4 = _mm_min_ps(x_x4, scrMaxX_x4);
+      // __m128 scrPosY_x4 = _mm_min_ps(y_x4, scrMaxY_x4);
+      __m128 scrIndex_x4 = _mm_add_ps(x_x4, _mm_mul_ps(y_x4, scrWidth_x4));
 
       //NOTE: convert uv from NDC to uv coordinate
-      v2 bmPos = (uvPos.xy * z) * bitmapMax;
+      __m128 z_x4 = _mm_div_ps(one_x4, uvPosZ_x4);
 
-      i32 xFloor = (i32)(bmPos.x);
-      i32 yFloor = (i32)(bmPos.y);
+      __m128 bmPosX_x4 = _mm_mul_ps(bitmapMaxX_x4, _mm_mul_ps(uvPosX_x4, z_x4));
+      __m128 bmPosY_x4 = _mm_mul_ps(bitmapMaxY_x4, _mm_mul_ps(uvPosY_x4, z_x4));
 
-      float tX = bmPos.x - xFloor;
-      float tY = bmPos.y - yFloor;
+      __m128 xFloor_x4 = _mm_floor_ps(bmPosX_x4);
+      __m128 yFloor_x4 = _mm_floor_ps(bmPosY_x4);
+      __m128 xCeil_x4 = _mm_min_ps(xFloor_x4, scrMaxX_x4);
+      __m128 yCeil_x4 = _mm_min_ps(yFloor_x4, scrMaxY_x4);
 
-      bilinear_sample texelSample = BilinearSample(bitmap, xFloor, yFloor);
-      v4 texel = SRGBBilinearBlend(texelSample, tX, tY);
+      __m128 tX_x4 = _mm_sub_ps(bmPosX_x4, xFloor_x4);
+      __m128 tY_x4 = _mm_sub_ps(bmPosY_x4, yFloor_x4);
+
+      __m128 sampleAR_x4 = _mm_set_ps1(0.0f);
+      __m128 sampleAG_x4 = _mm_set_ps1(0.0f);
+      __m128 sampleAB_x4 = _mm_set_ps1(0.0f);
+      __m128 sampleAA_x4 = _mm_set_ps1(0.0f);
+
+      __m128 sampleBR_x4 = _mm_set_ps1(0.0f);
+      __m128 sampleBG_x4 = _mm_set_ps1(0.0f);
+      __m128 sampleBB_x4 = _mm_set_ps1(0.0f);
+      __m128 sampleBA_x4 = _mm_set_ps1(0.0f);
+
+      __m128 sampleCR_x4 = _mm_set_ps1(0.0f);
+      __m128 sampleCG_x4 = _mm_set_ps1(0.0f);
+      __m128 sampleCB_x4 = _mm_set_ps1(0.0f);
+      __m128 sampleCA_x4 = _mm_set_ps1(0.0f);
+
+      __m128 sampleDR_x4 = _mm_set_ps1(0.0f);
+      __m128 sampleDG_x4 = _mm_set_ps1(0.0f);
+      __m128 sampleDB_x4 = _mm_set_ps1(0.0f);
+      __m128 sampleDA_x4 = _mm_set_ps1(0.0f);
+
+      bool shouldFill[4];
+      i32 scrIndexCount = (i32)(drawBuffer->width * drawBuffer->height);
+
+      for (int i = 0; i < 4; ++i)
+      {
+        shouldFill[i] = (PS(x_x4, i) < endX);
+        shouldFill[i] = shouldFill[i] && (PS(x_x4, i) >= 0) && (PS(x_x4, i) <= scrMax.x);
+        shouldFill[i] = shouldFill[i] && (PS(y_x4, i) >= 0) && (PS(y_x4, i) <= scrMax.y);
+
+        //NOTE: depth culling
+        i32 scrIndex = (i32)PS(scrIndex_x4, i);
+        shouldFill[i] = shouldFill[i] && (PS(z_x4, i) < cam->zBuffer[scrIndex]);
+
+        // mapping
+        if (shouldFill[i])
+        {
+          cam->zBuffer[scrIndex] = PS(z_x4, i);
+
+          float tX = PS(tX_x4, i);
+          float tY = PS(tY_x4, i);
+
+          i32 xFloor = (i32)PS(xFloor_x4, i);
+          i32 yFloor = (i32)PS(yFloor_x4, i);
+          i32 xCeil = (i32)PS(xCeil_x4, i);
+          i32 yCeil = (i32)PS(yCeil_x4, i);
+
+          u32 sampleA = bitmap->pixel[yFloor * bitmap->width + xFloor];
+          u32 sampleB = bitmap->pixel[yFloor * bitmap->width + xCeil];
+          u32 sampleC = bitmap->pixel[yCeil * bitmap->width + xFloor];
+          u32 sampleD = bitmap->pixel[yCeil * bitmap->width + xCeil];
+
+          PS(sampleAR_x4, i) = (float)((sampleA >> 16) & 0xFF);
+          PS(sampleAG_x4, i) = (float)((sampleA >> 8) & 0xFF);
+          PS(sampleAB_x4, i) = (float)((sampleA >> 0) & 0xFF);
+          PS(sampleAA_x4, i) = (float)((sampleA >> 24) & 0xFF);
+
+          PS(sampleBR_x4, i) = (float)((sampleB >> 16) & 0xFF);
+          PS(sampleBG_x4, i) = (float)((sampleB >> 8) & 0xFF);
+          PS(sampleBB_x4, i) = (float)((sampleB >> 0) & 0xFF);
+          PS(sampleBA_x4, i) = (float)((sampleB >> 24) & 0xFF);
+
+          PS(sampleCR_x4, i) = (float)((sampleC >> 16) & 0xFF);
+          PS(sampleCG_x4, i) = (float)((sampleC >> 8) & 0xFF);
+          PS(sampleCB_x4, i) = (float)((sampleC >> 0) & 0xFF);
+          PS(sampleCA_x4, i) = (float)((sampleC >> 24) & 0xFF);
+
+          PS(sampleDR_x4, i) = (float)((sampleD >> 16) & 0xFF);
+          PS(sampleDG_x4, i) = (float)((sampleD >> 8) & 0xFF);
+          PS(sampleDB_x4, i) = (float)((sampleD >> 0) & 0xFF);
+          PS(sampleDA_x4, i) = (float)((sampleD >> 24) & 0xFF);
+        }
+      }
+#define SQUARE_PS(M) _mm_mul_ps(M, M)
+      sampleAR_x4 = SQUARE_PS(_mm_mul_ps(sampleAR_x4, inv255_x4));
+      sampleBR_x4 = SQUARE_PS(_mm_mul_ps(sampleBR_x4, inv255_x4));
+      sampleCR_x4 = SQUARE_PS(_mm_mul_ps(sampleCR_x4, inv255_x4));
+      sampleDR_x4 = SQUARE_PS(_mm_mul_ps(sampleDR_x4, inv255_x4));
+
+      sampleAG_x4 = SQUARE_PS(_mm_mul_ps(sampleAG_x4, inv255_x4));
+      sampleBG_x4 = SQUARE_PS(_mm_mul_ps(sampleBG_x4, inv255_x4));
+      sampleCG_x4 = SQUARE_PS(_mm_mul_ps(sampleCG_x4, inv255_x4));
+      sampleDG_x4 = SQUARE_PS(_mm_mul_ps(sampleDG_x4, inv255_x4));
+
+      sampleAB_x4 = SQUARE_PS(_mm_mul_ps(sampleAB_x4, inv255_x4));
+      sampleBB_x4 = SQUARE_PS(_mm_mul_ps(sampleBB_x4, inv255_x4));
+      sampleCB_x4 = SQUARE_PS(_mm_mul_ps(sampleCB_x4, inv255_x4));
+      sampleDB_x4 = SQUARE_PS(_mm_mul_ps(sampleDB_x4, inv255_x4));
+
+      sampleAA_x4 = _mm_mul_ps(sampleAA_x4, inv255_x4);
+      sampleBA_x4 = _mm_mul_ps(sampleBA_x4, inv255_x4);
+      sampleCA_x4 = _mm_mul_ps(sampleCA_x4, inv255_x4);
+      sampleDA_x4 = _mm_mul_ps(sampleDA_x4, inv255_x4);
+
+      __m128 sampleX1R = _mm_add_ps(sampleAR_x4, _mm_mul_ps(tX_x4, _mm_sub_ps(sampleBR_x4, sampleAR_x4)));
+      __m128 sampleX1G = _mm_add_ps(sampleAG_x4, _mm_mul_ps(tX_x4, _mm_sub_ps(sampleBG_x4, sampleAG_x4)));
+      __m128 sampleX1B = _mm_add_ps(sampleAB_x4, _mm_mul_ps(tX_x4, _mm_sub_ps(sampleBB_x4, sampleAB_x4)));
+      __m128 sampleX1A = _mm_add_ps(sampleAA_x4, _mm_mul_ps(tX_x4, _mm_sub_ps(sampleBA_x4, sampleAA_x4)));
+
+      __m128 sampleX2R = _mm_add_ps(sampleCR_x4, _mm_mul_ps(tX_x4, _mm_sub_ps(sampleDR_x4, sampleCR_x4)));
+      __m128 sampleX2G = _mm_add_ps(sampleCG_x4, _mm_mul_ps(tX_x4, _mm_sub_ps(sampleDG_x4, sampleCG_x4)));
+      __m128 sampleX2B = _mm_add_ps(sampleCB_x4, _mm_mul_ps(tX_x4, _mm_sub_ps(sampleDB_x4, sampleCB_x4)));
+      __m128 sampleX2A = _mm_add_ps(sampleCA_x4, _mm_mul_ps(tX_x4, _mm_sub_ps(sampleDA_x4, sampleCA_x4)));
+
+
+      __m128 texelR_x4 = _mm_add_ps(sampleX1R, _mm_mul_ps(tX_x4, _mm_sub_ps(sampleX2R, sampleX1R)));
+      __m128 texelG_x4 = _mm_add_ps(sampleX1G, _mm_mul_ps(tX_x4, _mm_sub_ps(sampleX2G, sampleX1G)));
+      __m128 texelB_x4 = _mm_add_ps(sampleX1B, _mm_mul_ps(tX_x4, _mm_sub_ps(sampleX2B, sampleX1B)));
+      __m128 texelA_x4 = _mm_add_ps(sampleX1A, _mm_mul_ps(tX_x4, _mm_sub_ps(sampleX2A, sampleX1A)));
 
       // texel = Hadamard(texel, color);
-      texel.r = Clamp01(texel.r);
-      texel.g = Clamp01(texel.g);
-      texel.b = Clamp01(texel.b);
+      // texelR = Clamp01(texel.r);
+      // texelG = Clamp01(texel.g);
+      // texelB = Clamp01(texel.b);
 
-      u32* screenPixel = &drawBuffer->pixel[scrIndex];
-      v4 dest = UnpackToRGBA255(*screenPixel);
+      texelR_x4 = _mm_max_ps(texelR_x4, zero_x4);
+      texelG_x4 = _mm_max_ps(texelG_x4, zero_x4);
+      texelB_x4 = _mm_max_ps(texelB_x4, zero_x4);
+      texelA_x4 = _mm_max_ps(texelA_x4, zero_x4);
 
-      dest = SRGB255ToLinear1(dest);
+      texelR_x4 = _mm_min_ps(texelR_x4, one_x4);
+      texelG_x4 = _mm_min_ps(texelG_x4, one_x4);
+      texelB_x4 = _mm_min_ps(texelB_x4, one_x4);
+      texelA_x4 = _mm_min_ps(texelA_x4, one_x4);
 
-      v4 linearCol = AlphaBlend(texel, dest);
-      *screenPixel = Linear1ToSRGB1(linearCol).ToU32();
+      __m128 destR_x4 = _mm_set_ps1(0.0f);
+      __m128 destG_x4 = _mm_set_ps1(0.0f);
+      __m128 destB_x4 = _mm_set_ps1(0.0f);
+      __m128 destA_x4 = _mm_set_ps1(0.0f);
 
-      END_TIMER_BLOCK(PixelFill)
+      for (i32 i = 0; i < 4; ++i)
+      {
+        if (shouldFill[i])
+        {
+          i32 scrIndex = (i32)PS(scrIndex_x4, i);
+          u32* screenPixel = &drawBuffer->pixel[scrIndex];
+          u32 destCol = *screenPixel;
+
+          PS(destR_x4, i) = (float)((destCol >> 16) & 0xFF);
+          PS(destG_x4, i) = (float)((destCol >> 8) & 0xFF);
+          PS(destB_x4, i) = (float)((destCol >> 0) & 0xFF);
+          PS(destA_x4, i) = (float)((destCol >> 24) & 0xFF);
+        }
+      }
+
+      destR_x4 = SQUARE_PS(_mm_mul_ps(destR_x4, inv255_x4));
+      destG_x4 = SQUARE_PS(_mm_mul_ps(destG_x4, inv255_x4));
+      destB_x4 = SQUARE_PS(_mm_mul_ps(destB_x4, inv255_x4));
+      destA_x4 = _mm_mul_ps(destA_x4, inv255_x4);
+
+      __m128 invSA = _mm_sub_ps(one_x4, texelA_x4);
+
+      __m128 linearColR = _mm_add_ps(texelR_x4, _mm_mul_ps(invSA, destR_x4));
+      __m128 linearColG = _mm_add_ps(texelG_x4, _mm_mul_ps(invSA, destG_x4));
+      __m128 linearColB = _mm_add_ps(texelB_x4, _mm_mul_ps(invSA, destB_x4));
+      __m128 linearColA = _mm_add_ps(texelA_x4, _mm_mul_ps(invSA, destA_x4));
+
+      linearColR = _mm_sqrt_ps(linearColR);
+      linearColG = _mm_sqrt_ps(linearColG);
+      linearColB = _mm_sqrt_ps(linearColB);
+
+      linearColR = _mm_mul_ps(linearColR, one255_x4);
+      linearColG = _mm_mul_ps(linearColG, one255_x4);
+      linearColB = _mm_mul_ps(linearColB, one255_x4);
+      linearColA = _mm_mul_ps(linearColA, one255_x4);
+
+      for (i32 i = 0; i < 4; ++i)
+      {
+        if (shouldFill[i])
+        {
+          i32 scrIndex = (i32)PS(scrIndex_x4, i);
+          u32* screenPixel = &drawBuffer->pixel[scrIndex];
+          u32 alpha = (u32)PS(linearColA, i);
+          u32 red = (u32)PS(linearColR, i);
+          u32 green = (u32)PS(linearColG, i);
+          u32 blue = (u32)PS(linearColB, i);
+
+          *(screenPixel) = (alpha << 24) | (red << 16) | (green << 8) | (blue << 0);
+        }
+      }
     }
+    END_TIMER_BLOCK_COUNTED(PixelFill, (i32)Ceil((endX - startX) / 4.0f) * 4)
   }
 }
 
-
 void DrawTriangle(loaded_bitmap* drawBuffer, camera* cam, triangle tri, v4 color, loaded_bitmap* bitmap)
 {
-  i32 count = ARRAY_COUNT(tri.p);
+  BEGIN_TIMER_BLOCK(DrawTriangle)
+
+    i32 count = ARRAY_COUNT(tri.p);
   for (i32 i = 0; i < count; ++i)
   {
     for (i32 j = i + 1; j < count; ++j)
@@ -560,6 +751,9 @@ void DrawTriangle(loaded_bitmap* drawBuffer, camera* cam, triangle tri, v4 color
   bound2.p2 = { scrMiddleR, uvMiddleR };
   bound2.p3 = tri.p2;
   DrawFlatQuadTex(drawBuffer, bitmap, cam, bound2);
+
+
+  END_TIMER_BLOCK(DrawTriangle)
 }
 
 void ProcessTriangle(loaded_bitmap* drawBuffer, camera* cam, triangle tri, loaded_bitmap* texture, v4 color)
@@ -574,13 +768,14 @@ void ProcessTriangle(loaded_bitmap* drawBuffer, camera* cam, triangle tri, loade
 void Draw(loaded_bitmap* drawBuffer, camera* cam, vertex* ver, i32 verCount, i32* index, i32 indexCount, loaded_bitmap* texture, v4 color)
 {
 
-  for(int i = 0; i < cam->size.x * cam->size.y; ++i)
+  for (int i = 0; i < cam->size.x * cam->size.y; ++i)
   {
     cam->zBuffer[i] = INFINITY;
   }
 
   for (int i = 0; i < verCount; ++i)
   {
+    //TODO: vertex shader
     ver[i].pos = WorldPointToCamera(cam, ver[i].pos);
   }
 
