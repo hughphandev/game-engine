@@ -268,8 +268,9 @@ mat4 GetPerspectiveMatrix(camera* cam)
   mat4 result = {};
   result.r0 = V4(s, 0, 0, 0);
   result.r1 = V4(0, s * a, 0, 0);
-  result.r2 = V4(0, 0, -cam->zFar / deltaZ, (cam->zFar * cam->zNear) / deltaZ);
-  result.r3 = V4(0, 0, -1, 0);
+  result.r2 = V4(0, 0, 1, 0);
+  // result.r2 = V4(0, 0, cam->zFar / deltaZ, (cam->zFar * cam->zNear) / deltaZ);
+  result.r3 = V4(0, 0, 1, 0);
 
   return result;
 }
@@ -298,7 +299,7 @@ mat4 GetScaleMatrix(v3 scale)
 
 mat4 GetLookAtMatrix(v3 pos, v3 target, v3 up)
 {
-  v3 camFront = Normalize(pos - target);
+  v3 camFront = Normalize(target - pos);
   v3 camRight = Normalize(Cross(up, camFront));
   v3 camUp = Normalize(Cross(camFront, camRight));
 
@@ -316,7 +317,8 @@ inline v3 WorldPointToCamera(camera* cam, v3 point)
   //NOTE: camera position is (0, 0, 0), camera direction is z axis
   mat4 trans = GetTranslateMatrix(cam->pos);
   mat4 view = GetLookAtMatrix(cam->pos, cam->pos + cam->dir, V3(0, 1, 0));
-  v4 result = view * trans * V4(point, 1);
+  v4 result = trans * V4(point, 1);
+  result = view * result;
   return result.xyz;
 }
 
@@ -408,16 +410,15 @@ v4 BiasNormal(v4 normal)
   return V4((2.0f * normal.xyz) - 1.0f, normal.w);
 }
 
-void DrawFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* cam, flat_quad bound)
+void DrawFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* cam, flat_quad bound, float minY, float maxY)
 {
-  v2 scrMax = V2(drawBuffer->width - 1, drawBuffer->height - 1);
+  v2 scrSize = V2(drawBuffer->width, drawBuffer->height);
+
   v2 bitmapMax = V2(bitmap->width - 1, bitmap->height - 1);
 
   v3 uv3[4];
   for (i32 i = 0; i < 4; ++i)
   {
-    //TODO: Perspective correct
-    bound.p[i].pos.xy = NDCPointToScreen(cam, bound.p[i].pos);
     uv3[i] = V3(bound.p[i].uv, bound.p[i].pos.z);
   }
 
@@ -435,27 +436,31 @@ void DrawFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* c
   v3 uvStepYL = uvDeltaL * tStepYL;
   v3 uvStepYR = uvDeltaR * tStepYR;
 
-  v3 uvPreStepYL = uvDeltaL * (startY - bound.p0.pos.y) * tStepYL;
-  v3 uvPreStepYR = uvDeltaR * (startY - bound.p2.pos.y) * tStepYR;
+  float cStartY = Max(startY, minY);
+  float cEndY = Min(endY, maxY);
+
+  v3 uvPreStepYL = uvDeltaL * (cStartY - bound.p0.pos.y) * tStepYL;
+  v3 uvPreStepYR = uvDeltaR * (cStartY - bound.p2.pos.y) * tStepYR;
 
   v3 uvStart = uv3[0] + uvPreStepYL;
   v3 uvEnd = uv3[2] + uvPreStepYR;
 
 #define PS(M, i) *((float*)(&M) + i)
+#define PSi(M, i) *((i32*)(&M) + i)
   __m128 zero_x4 = _mm_set_ps1(0.0f);
   __m128 one_x4 = _mm_set_ps1(1.0f);
   __m128 one255_x4 = _mm_set_ps1(255.0f);
   __m128 inv255_x4 = _mm_set_ps1(1.0f / 255.0f);
 
-  __m128 scrMaxX_x4 = _mm_set_ps1(scrMax.x);
-  __m128 scrMaxY_x4 = _mm_set_ps1(scrMax.y);
+  __m128 maxX_x4 = _mm_set_ps1(scrSize.x);
+  __m128 maxY_x4 = _mm_set_ps1(maxY);
   __m128 bitmapMaxX_x4 = _mm_set_ps1(bitmapMax.x);
   __m128 bitmapMaxY_x4 = _mm_set_ps1(bitmapMax.y);
 
   __m128 scrWidth_x4 = _mm_set_ps1((float)drawBuffer->width);
   __m128 scrHeight_x4 = _mm_set_ps1((float)drawBuffer->height);
 
-  for (float y = startY; y < endY; ++y, uvStart += uvStepYL, uvEnd += uvStepYR)
+  for (float y = cStartY; y < cEndY; ++y, uvStart += uvStepYL, uvEnd += uvStepYR)
   {
     float startX = Lerp(bound.p0.pos.x, bound.p1.pos.x, tStepYL * (y - bound.p0.pos.y));
     float endX = Lerp(bound.p2.pos.x, bound.p3.pos.x, tStepYR * (y - bound.p2.pos.y));
@@ -471,12 +476,16 @@ void DrawFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* c
     __m128 uvEndY_x4 = _mm_set_ps1(uvEnd.y);
     __m128 uvEndZ_x4 = _mm_set_ps1(uvEnd.z);
 
-    BEGIN_TIMER_BLOCK(PixelFill);
-    for (float x = startX; x < endX; x += 4)
+    float cStartX = Clamp(startX, 0.0f, scrSize.x);
+    float cEndX = Clamp(endX, 0.0f, scrSize.x);
+
+    __m128 cEndX_x4 = _mm_set1_ps(cEndX);
+    for (float x = cStartX; x < cEndX; x += 4)
     {
+      BEGIN_TIMER_BLOCK(PixelFill);
+
       __m128 x_x4 = _mm_set_ps(x + 3, x + 2, x + 1, x);
       __m128 y_x4 = _mm_set_ps1(y);
-
 
       __m128 tUV_x4 = _mm_div_ps(_mm_sub_ps(x_x4, startX_x4), _mm_sub_ps(endX_x4, startX_x4));
 
@@ -484,11 +493,6 @@ void DrawFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* c
       __m128 uvPosY_x4 = _mm_add_ps(uvStartY_x4, _mm_mul_ps(tUV_x4, _mm_sub_ps(uvEndY_x4, uvStartY_x4)));
       __m128 uvPosZ_x4 = _mm_add_ps(uvStartZ_x4, _mm_mul_ps(tUV_x4, _mm_sub_ps(uvEndZ_x4, uvStartZ_x4)));
 
-      // __m128 scrPosX_x4 = _mm_min_ps(x_x4, scrMaxX_x4);
-      // __m128 scrPosY_x4 = _mm_min_ps(y_x4, scrMaxY_x4);
-      __m128 scrIndex_x4 = _mm_add_ps(x_x4, _mm_mul_ps(y_x4, scrWidth_x4));
-
-      //NOTE: convert uv from NDC to uv coordinate
       __m128 z_x4 = _mm_div_ps(one_x4, uvPosZ_x4);
 
       __m128 bmPosX_x4 = _mm_mul_ps(bitmapMaxX_x4, _mm_mul_ps(uvPosX_x4, z_x4));
@@ -496,84 +500,66 @@ void DrawFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* c
 
       __m128 xFloor_x4 = _mm_floor_ps(bmPosX_x4);
       __m128 yFloor_x4 = _mm_floor_ps(bmPosY_x4);
-      __m128 xCeil_x4 = _mm_min_ps(xFloor_x4, scrMaxX_x4);
-      __m128 yCeil_x4 = _mm_min_ps(yFloor_x4, scrMaxY_x4);
+      __m128 xCeil_x4 = _mm_min_ps(_mm_add_ps(xFloor_x4, one_x4), maxX_x4);
+      __m128 yCeil_x4 = _mm_min_ps(_mm_add_ps(yFloor_x4, one_x4), maxY_x4);
 
       __m128 tX_x4 = _mm_sub_ps(bmPosX_x4, xFloor_x4);
       __m128 tY_x4 = _mm_sub_ps(bmPosY_x4, yFloor_x4);
 
-      __m128 sampleAR_x4 = _mm_set_ps1(0.0f);
-      __m128 sampleAG_x4 = _mm_set_ps1(0.0f);
-      __m128 sampleAB_x4 = _mm_set_ps1(0.0f);
-      __m128 sampleAA_x4 = _mm_set_ps1(0.0f);
+      i32 orgIndex = (i32)(x + y * scrSize.x);
+      u32* pixel = drawBuffer->pixel + orgIndex;
 
-      __m128 sampleBR_x4 = _mm_set_ps1(0.0f);
-      __m128 sampleBG_x4 = _mm_set_ps1(0.0f);
-      __m128 sampleBB_x4 = _mm_set_ps1(0.0f);
-      __m128 sampleBA_x4 = _mm_set_ps1(0.0f);
+      __m128i destCol = _mm_loadu_si128((__m128i*)pixel);
 
-      __m128 sampleCR_x4 = _mm_set_ps1(0.0f);
-      __m128 sampleCG_x4 = _mm_set_ps1(0.0f);
-      __m128 sampleCB_x4 = _mm_set_ps1(0.0f);
-      __m128 sampleCA_x4 = _mm_set_ps1(0.0f);
+      __m128 zBuffer_x4 = _mm_loadu_ps(cam->zBuffer + orgIndex);
 
-      __m128 sampleDR_x4 = _mm_set_ps1(0.0f);
-      __m128 sampleDG_x4 = _mm_set_ps1(0.0f);
-      __m128 sampleDB_x4 = _mm_set_ps1(0.0f);
-      __m128 sampleDA_x4 = _mm_set_ps1(0.0f);
+      __m128 edgeMask = _mm_cmplt_ps(x_x4, cEndX_x4);
+      __m128 depthMask = _mm_cmplt_ps(z_x4, zBuffer_x4);
+      __m128 writeMaskPS = (_mm_and_ps(depthMask, edgeMask));
+      __m128i writeMask = _mm_castps_si128(writeMaskPS);
 
-      bool shouldFill[4];
-      i32 scrIndexCount = (i32)(drawBuffer->width * drawBuffer->height);
+      //NOTE: zBuffering
+      __m128 minDepth = _mm_min_ps(zBuffer_x4, z_x4);
+      __m128 depthOut = _mm_or_ps(_mm_and_ps(writeMaskPS, minDepth), _mm_andnot_ps(writeMaskPS, zBuffer_x4));
+      _mm_storeu_ps(cam->zBuffer + orgIndex, depthOut);
 
-      for (int i = 0; i < 4; ++i)
-      {
-        shouldFill[i] = (PS(x_x4, i) < endX);
-        shouldFill[i] = shouldFill[i] && (PS(x_x4, i) >= 0) && (PS(x_x4, i) <= scrMax.x);
-        shouldFill[i] = shouldFill[i] && (PS(y_x4, i) >= 0) && (PS(y_x4, i) <= scrMax.y);
+      i32 xFloor = (i32)PS(xFloor_x4, 0);
+      i32 yFloor = (i32)PS(yFloor_x4, 0);
+      i32 xCeil = (i32)PS(xCeil_x4, 0);
+      i32 yCeil = (i32)PS(yCeil_x4, 0);
 
-        //NOTE: depth culling
-        i32 scrIndex = (i32)PS(scrIndex_x4, i);
-        shouldFill[i] = shouldFill[i] && (PS(z_x4, i) < cam->zBuffer[scrIndex]);
+      __m128i sampleA_x4 = _mm_loadu_si128((__m128i*) & bitmap->pixel[yFloor * bitmap->width + xFloor]);
+      __m128i sampleB_x4 = _mm_loadu_si128((__m128i*) & bitmap->pixel[yFloor * bitmap->width + xCeil]);
+      __m128i sampleC_x4 = _mm_loadu_si128((__m128i*) & bitmap->pixel[yCeil * bitmap->width + xFloor]);
+      __m128i sampleD_x4 = _mm_loadu_si128((__m128i*) & bitmap->pixel[yCeil * bitmap->width + xCeil]);
 
-        // mapping
-        if (shouldFill[i])
-        {
-          cam->zBuffer[scrIndex] = PS(z_x4, i);
+      __m128i ffMask = _mm_set1_epi32(0xFF);
 
-          float tX = PS(tX_x4, i);
-          float tY = PS(tY_x4, i);
+      __m128 sampleAA_x4 = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sampleA_x4, 24), ffMask));
+      __m128 sampleAR_x4 = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sampleA_x4, 16), ffMask));
+      __m128 sampleAG_x4 = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sampleA_x4, 8), ffMask));
+      __m128 sampleAB_x4 = _mm_cvtepi32_ps(_mm_and_si128(sampleA_x4, ffMask));
 
-          i32 xFloor = (i32)PS(xFloor_x4, i);
-          i32 yFloor = (i32)PS(yFloor_x4, i);
-          i32 xCeil = (i32)PS(xCeil_x4, i);
-          i32 yCeil = (i32)PS(yCeil_x4, i);
+      __m128 sampleBA_x4 = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sampleB_x4, 24), ffMask));
+      __m128 sampleBR_x4 = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sampleB_x4, 16), ffMask));
+      __m128 sampleBG_x4 = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sampleB_x4, 8), ffMask));
+      __m128 sampleBB_x4 = _mm_cvtepi32_ps(_mm_and_si128(sampleB_x4, ffMask));
 
-          u32 sampleA = bitmap->pixel[yFloor * bitmap->width + xFloor];
-          u32 sampleB = bitmap->pixel[yFloor * bitmap->width + xCeil];
-          u32 sampleC = bitmap->pixel[yCeil * bitmap->width + xFloor];
-          u32 sampleD = bitmap->pixel[yCeil * bitmap->width + xCeil];
+      __m128 sampleCA_x4 = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sampleC_x4, 24), ffMask));
+      __m128 sampleCR_x4 = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sampleC_x4, 16), ffMask));
+      __m128 sampleCG_x4 = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sampleC_x4, 8), ffMask));
+      __m128 sampleCB_x4 = _mm_cvtepi32_ps(_mm_and_si128(sampleC_x4, ffMask));
 
-          PS(sampleAR_x4, i) = (float)((sampleA >> 16) & 0xFF);
-          PS(sampleAG_x4, i) = (float)((sampleA >> 8) & 0xFF);
-          PS(sampleAB_x4, i) = (float)((sampleA >> 0) & 0xFF);
-          PS(sampleAA_x4, i) = (float)((sampleA >> 24) & 0xFF);
+      __m128 sampleDA_x4 = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sampleD_x4, 24), ffMask));
+      __m128 sampleDR_x4 = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sampleD_x4, 16), ffMask));
+      __m128 sampleDG_x4 = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(sampleD_x4, 8), ffMask));
+      __m128 sampleDB_x4 = _mm_cvtepi32_ps(_mm_and_si128(sampleD_x4, ffMask));
 
-          PS(sampleBR_x4, i) = (float)((sampleB >> 16) & 0xFF);
-          PS(sampleBG_x4, i) = (float)((sampleB >> 8) & 0xFF);
-          PS(sampleBB_x4, i) = (float)((sampleB >> 0) & 0xFF);
-          PS(sampleBA_x4, i) = (float)((sampleB >> 24) & 0xFF);
+      __m128 destA_x4 = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(destCol, 24), ffMask));
+      __m128 destR_x4 = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(destCol, 16), ffMask));
+      __m128 destG_x4 = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32(destCol, 8), ffMask));
+      __m128 destB_x4 = _mm_cvtepi32_ps(_mm_and_si128(destCol, ffMask));
 
-          PS(sampleCR_x4, i) = (float)((sampleC >> 16) & 0xFF);
-          PS(sampleCG_x4, i) = (float)((sampleC >> 8) & 0xFF);
-          PS(sampleCB_x4, i) = (float)((sampleC >> 0) & 0xFF);
-          PS(sampleCA_x4, i) = (float)((sampleC >> 24) & 0xFF);
-
-          PS(sampleDR_x4, i) = (float)((sampleD >> 16) & 0xFF);
-          PS(sampleDG_x4, i) = (float)((sampleD >> 8) & 0xFF);
-          PS(sampleDB_x4, i) = (float)((sampleD >> 0) & 0xFF);
-          PS(sampleDA_x4, i) = (float)((sampleD >> 24) & 0xFF);
-        }
-      }
 #define SQUARE_PS(M) _mm_mul_ps(M, M)
       sampleAR_x4 = SQUARE_PS(_mm_mul_ps(sampleAR_x4, inv255_x4));
       sampleBR_x4 = SQUARE_PS(_mm_mul_ps(sampleBR_x4, inv255_x4));
@@ -605,16 +591,12 @@ void DrawFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* c
       __m128 sampleX2B = _mm_add_ps(sampleCB_x4, _mm_mul_ps(tX_x4, _mm_sub_ps(sampleDB_x4, sampleCB_x4)));
       __m128 sampleX2A = _mm_add_ps(sampleCA_x4, _mm_mul_ps(tX_x4, _mm_sub_ps(sampleDA_x4, sampleCA_x4)));
 
-
       __m128 texelR_x4 = _mm_add_ps(sampleX1R, _mm_mul_ps(tX_x4, _mm_sub_ps(sampleX2R, sampleX1R)));
       __m128 texelG_x4 = _mm_add_ps(sampleX1G, _mm_mul_ps(tX_x4, _mm_sub_ps(sampleX2G, sampleX1G)));
       __m128 texelB_x4 = _mm_add_ps(sampleX1B, _mm_mul_ps(tX_x4, _mm_sub_ps(sampleX2B, sampleX1B)));
       __m128 texelA_x4 = _mm_add_ps(sampleX1A, _mm_mul_ps(tX_x4, _mm_sub_ps(sampleX2A, sampleX1A)));
 
       // texel = Hadamard(texel, color);
-      // texelR = Clamp01(texel.r);
-      // texelG = Clamp01(texel.g);
-      // texelB = Clamp01(texel.b);
 
       texelR_x4 = _mm_max_ps(texelR_x4, zero_x4);
       texelG_x4 = _mm_max_ps(texelG_x4, zero_x4);
@@ -626,26 +608,6 @@ void DrawFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* c
       texelB_x4 = _mm_min_ps(texelB_x4, one_x4);
       texelA_x4 = _mm_min_ps(texelA_x4, one_x4);
 
-      __m128 destR_x4 = _mm_set_ps1(0.0f);
-      __m128 destG_x4 = _mm_set_ps1(0.0f);
-      __m128 destB_x4 = _mm_set_ps1(0.0f);
-      __m128 destA_x4 = _mm_set_ps1(0.0f);
-
-      for (i32 i = 0; i < 4; ++i)
-      {
-        if (shouldFill[i])
-        {
-          i32 scrIndex = (i32)PS(scrIndex_x4, i);
-          u32* screenPixel = &drawBuffer->pixel[scrIndex];
-          u32 destCol = *screenPixel;
-
-          PS(destR_x4, i) = (float)((destCol >> 16) & 0xFF);
-          PS(destG_x4, i) = (float)((destCol >> 8) & 0xFF);
-          PS(destB_x4, i) = (float)((destCol >> 0) & 0xFF);
-          PS(destA_x4, i) = (float)((destCol >> 24) & 0xFF);
-        }
-      }
-
       destR_x4 = SQUARE_PS(_mm_mul_ps(destR_x4, inv255_x4));
       destG_x4 = SQUARE_PS(_mm_mul_ps(destG_x4, inv255_x4));
       destB_x4 = SQUARE_PS(_mm_mul_ps(destB_x4, inv255_x4));
@@ -653,44 +615,46 @@ void DrawFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* c
 
       __m128 invSA = _mm_sub_ps(one_x4, texelA_x4);
 
-      __m128 linearColR = _mm_add_ps(texelR_x4, _mm_mul_ps(invSA, destR_x4));
-      __m128 linearColG = _mm_add_ps(texelG_x4, _mm_mul_ps(invSA, destG_x4));
-      __m128 linearColB = _mm_add_ps(texelB_x4, _mm_mul_ps(invSA, destB_x4));
-      __m128 linearColA = _mm_add_ps(texelA_x4, _mm_mul_ps(invSA, destA_x4));
+      __m128 blendedR = _mm_add_ps(texelR_x4, _mm_mul_ps(invSA, destR_x4));
+      __m128 blendedG = _mm_add_ps(texelG_x4, _mm_mul_ps(invSA, destG_x4));
+      __m128 blendedB = _mm_add_ps(texelB_x4, _mm_mul_ps(invSA, destB_x4));
+      __m128 blendedA = _mm_add_ps(texelA_x4, _mm_mul_ps(invSA, destA_x4));
 
-      linearColR = _mm_sqrt_ps(linearColR);
-      linearColG = _mm_sqrt_ps(linearColG);
-      linearColB = _mm_sqrt_ps(linearColB);
+      blendedR = _mm_sqrt_ps(blendedR);
+      blendedG = _mm_sqrt_ps(blendedG);
+      blendedB = _mm_sqrt_ps(blendedB);
 
-      linearColR = _mm_mul_ps(linearColR, one255_x4);
-      linearColG = _mm_mul_ps(linearColG, one255_x4);
-      linearColB = _mm_mul_ps(linearColB, one255_x4);
-      linearColA = _mm_mul_ps(linearColA, one255_x4);
+      blendedR = _mm_mul_ps(blendedR, one255_x4);
+      blendedG = _mm_mul_ps(blendedG, one255_x4);
+      blendedB = _mm_mul_ps(blendedB, one255_x4);
+      blendedA = _mm_mul_ps(blendedA, one255_x4);
 
-      for (i32 i = 0; i < 4; ++i)
-      {
-        if (shouldFill[i])
-        {
-          i32 scrIndex = (i32)PS(scrIndex_x4, i);
-          u32* screenPixel = &drawBuffer->pixel[scrIndex];
-          u32 alpha = (u32)PS(linearColA, i);
-          u32 red = (u32)PS(linearColR, i);
-          u32 green = (u32)PS(linearColG, i);
-          u32 blue = (u32)PS(linearColB, i);
+      __m128i intR = _mm_cvtps_epi32(blendedR);
+      __m128i intG = _mm_cvtps_epi32(blendedG);
+      __m128i intB = _mm_cvtps_epi32(blendedB);
+      __m128i intA = _mm_cvtps_epi32(blendedA);
 
-          *(screenPixel) = (alpha << 24) | (red << 16) | (green << 8) | (blue << 0);
-        }
-      }
+      __m128i sA = _mm_slli_epi32(intA, 24);
+      __m128i sR = _mm_slli_epi32(intR, 16);
+      __m128i sG = _mm_slli_epi32(intG, 8);
+      __m128i sB = intB;
+
+      __m128i pixelOut = _mm_or_si128(_mm_or_si128(sR, sG), _mm_or_si128(sB, sA));
+
+      __m128i maskedOut = _mm_or_si128(_mm_and_si128(writeMask, pixelOut), _mm_andnot_si128(writeMask, destCol));
+
+      _mm_storeu_si128((__m128i*)pixel, maskedOut);
+
+      END_TIMER_BLOCK_COUNTED(PixelFill, 4);
     }
-    END_TIMER_BLOCK_COUNTED(PixelFill, (i32)Ceil((endX - startX) / 4.0f) * 4)
   }
 }
 
 void DrawTriangle(loaded_bitmap* drawBuffer, camera* cam, triangle tri, v4 color, loaded_bitmap* bitmap)
 {
-  BEGIN_TIMER_BLOCK(DrawTriangle)
+  BEGIN_TIMER_BLOCK(DrawTriangle);
 
-    i32 count = ARRAY_COUNT(tri.p);
+  i32 count = ARRAY_COUNT(tri.p);
   for (i32 i = 0; i < count; ++i)
   {
     for (i32 j = i + 1; j < count; ++j)
@@ -704,7 +668,8 @@ void DrawTriangle(loaded_bitmap* drawBuffer, camera* cam, triangle tri, v4 color
 
   for (i32 i = 0; i < count; ++i)
   {
-    //NOTE: convert uv propotion to screen coordinate
+    //NOTE: perspective divide
+    tri.p[i].pos.xy = NDCPointToScreen(cam, tri.p[i].pos);
     float zInv = 1.0f / tri.p[i].pos.z;
     tri.p[i].uv *= zInv;
     tri.p[i].pos.z = zInv;
@@ -738,19 +703,22 @@ void DrawTriangle(loaded_bitmap* drawBuffer, camera* cam, triangle tri, v4 color
     uvMiddleR = uvMiddle;
   }
 
+  float minY = Max(tri.p0.pos.y, 0);
+  float maxY = Min(tri.p2.pos.y, (float)drawBuffer->height);
+
   flat_quad bound1;
   bound1.p0 = tri.p0;
   bound1.p1 = { scrMiddleL, uvMiddleL };
   bound1.p2 = tri.p0;
   bound1.p3 = { scrMiddleR, uvMiddleR };
-  DrawFlatQuadTex(drawBuffer, bitmap, cam, bound1);
+  DrawFlatQuadTex(drawBuffer, bitmap, cam, bound1, minY, maxY);
 
   flat_quad bound2;
   bound2.p0 = { scrMiddleL, uvMiddleL };
   bound2.p1 = tri.p2;
   bound2.p2 = { scrMiddleR, uvMiddleR };
   bound2.p3 = tri.p2;
-  DrawFlatQuadTex(drawBuffer, bitmap, cam, bound2);
+  DrawFlatQuadTex(drawBuffer, bitmap, cam, bound2, minY, maxY);
 
 
   END_TIMER_BLOCK(DrawTriangle)
@@ -760,8 +728,12 @@ void ProcessTriangle(loaded_bitmap* drawBuffer, camera* cam, triangle tri, loade
 {
   for (int i = 0; i < ARRAY_COUNT(tri.p); ++i)
   {
+    //TODO: zClipping
+    if (tri.p[i].pos.z < 0.0f) return;
+
     tri.p[i].pos = CameraPointToNDC(cam, tri.p[i].pos);
   }
+  DrawTriangle(drawBuffer, cam, tri, color, texture);
   DrawTriangle(drawBuffer, cam, tri, color, texture);
 }
 
@@ -775,9 +747,10 @@ void Draw(loaded_bitmap* drawBuffer, camera* cam, vertex* ver, i32 verCount, i32
 
   for (int i = 0; i < verCount; ++i)
   {
-    //TODO: vertex shader
+    //NOTE: vertex shader
     ver[i].pos = WorldPointToCamera(cam, ver[i].pos);
   }
+
 
   for (int i = 0; i < indexCount; i += 3)
   {
@@ -789,7 +762,7 @@ void Draw(loaded_bitmap* drawBuffer, camera* cam, vertex* ver, i32 verCount, i32
     v3 normal = Cross(tri.p1.pos - tri.p0.pos, tri.p2.pos - tri.p0.pos);
 
     //NOTE: backface culling
-    if (Dot(tri.p0.pos, normal) < 0.0f)
+    if (Dot(tri.p0.pos, normal) > 0.0f)
     {
       ProcessTriangle(drawBuffer, cam, tri, texture, color);
     }
@@ -1176,7 +1149,8 @@ inline render_group* InitRenderGroup(memory_arena* arena, size_t maxPushBufferSi
   InitMemoryArena(&result->pushBuffer, maxPushBufferSize, PUSH_SIZE(arena, maxPushBufferSize));
 
   result->cam = cam;
-  int camSizeIndex = (int)(cam->size.x * cam->size.y);
+  i32 pixelGuard = 4;
+  i32 camSizeIndex = (i32)(cam->size.x * cam->size.y + pixelGuard);
   cam->zBuffer = PUSH_ARRAY(arena, float, camSizeIndex);
 
   return result;

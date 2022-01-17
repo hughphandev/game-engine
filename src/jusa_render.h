@@ -8,9 +8,9 @@
 
 struct game_offscreen_buffer
 {
-  void* memory;
   int width;
   int height;
+  void* memory;
 };
 
 

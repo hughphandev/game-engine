@@ -165,8 +165,6 @@ bool DEBUGPlatformWriteFile(char* fileName, size_t memorySize, void* memory)
   return result;
 }
 
-
-
 static win32_window_dimension Win32GetWindowDimension(HWND window)
 {
   RECT clientRect;
@@ -177,8 +175,7 @@ static win32_window_dimension Win32GetWindowDimension(HWND window)
   return wd;
 }
 
-static void Win32ResizeDIBSection(win32_offscreen_buffer* buffer, int width,
-                                  int height)
+static void Win32ResizeDIBSection(win32_offscreen_buffer* buffer, int width, int height)
 {
   if (buffer->memory)
   {
@@ -196,9 +193,9 @@ static void Win32ResizeDIBSection(win32_offscreen_buffer* buffer, int width,
   buffer->info.bmiHeader.biBitCount = 32;
   buffer->info.bmiHeader.biCompression = BI_RGB;
 
-  int bitmapMemorySize = buffer->width * buffer->height * bytePerPixel;
-  buffer->memory = VirtualAlloc(0, bitmapMemorySize, MEM_RESERVE | MEM_COMMIT,
-                                PAGE_READWRITE);
+  int guardPixel = 4;
+  int bitmapMemorySize = (buffer->width * buffer->height + guardPixel) * bytePerPixel;
+  buffer->memory = VirtualAlloc(0, bitmapMemorySize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
 }
 
@@ -978,7 +975,12 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
             ScreenToClient(window, &midPoint);
 
             input->dMouseX = mousePoint.x - midPoint.x;
-            input->dMouseY = mousePoint.y - midPoint.y;
+            input->dMouseY = -(mousePoint.y - midPoint.y);
+
+            // char buf[256];
+            // _snprintf_s(buf, sizeof(buf), "MouseX: %i, MouseY: %i", input->dMouseX, input->dMouseY);
+            // OutputDebugStringA(buf);
+
             ShowCursor(false);
           }
 

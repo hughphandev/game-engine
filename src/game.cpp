@@ -436,7 +436,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     gameState->cam.rFov = 0.5f * PI;
     gameState->cam.zNear = 0.5;
     gameState->cam.zFar = 20;
-    gameState->cam.pos = V3(0.5f, 0.5f, 1);
+    gameState->cam.pos = V3(0, 0, -2);
     gameState->cam.rot = {};
 
     world->tileCountX = 1024;
@@ -576,19 +576,16 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     dir.y -= 1;
   }
 
-
-
-
   gameState->cam.rot += V2(input.dMouseX, input.dMouseY);
-  float pitch = -gameState->cam.rot.y * input.dt * 0.01f;
-  float yaw = (-PI * 0.5f) + gameState->cam.rot.x * input.dt * 0.01f;
+  float pitch = gameState->cam.rot.y * input.dt * 0.01f;
+  float yaw = (PI * 0.5f) + gameState->cam.rot.x * input.dt * 0.01f;
 
-  renderGroup->cam->dir.x = Cos(yaw) * Cos(pitch);
+  renderGroup->cam->dir.x = -Cos(yaw) * Cos(pitch);
   renderGroup->cam->dir.y = Sin(pitch);
   renderGroup->cam->dir.z = Sin(yaw) * Cos(pitch);
   renderGroup->cam->dir = Normalize(renderGroup->cam->dir);
 
-  renderGroup->cam->pos += Normalize(dir.y * renderGroup->cam->dir + dir.x * Cross(renderGroup->cam->dir, V3(0, 1, 0))) * input.dt;
+  renderGroup->cam->pos += Normalize(dir.y * renderGroup->cam->dir + dir.x * Cross(V3(0, 1, 0), renderGroup->cam->dir)) * input.dt;
 
 
   vertex ver[8];
@@ -597,10 +594,10 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   ver[2].pos = { 1.0f, 1.0f, 0.0f };
   ver[3].pos = { 0.0f, 1.0f, 0.0f };
 
-  ver[4].pos = { 0.0f, 0.0f, -1.0f };
-  ver[5].pos = { 1.0f, 0.0f, -1.0f };
-  ver[6].pos = { 1.0f, 1.0f, -1.0f };
-  ver[7].pos = { 0.0f, 1.0f, -1.0f };
+  ver[4].pos = { 0.0f, 0.0f, 1.0f };
+  ver[5].pos = { 1.0f, 0.0f, 1.0f };
+  ver[6].pos = { 1.0f, 1.0f, 1.0f };
+  ver[7].pos = { 0.0f, 1.0f, 1.0f };
 
   ver[0].uv = { 0.0f, 0.0f };
   ver[1].uv = { 1.0f, 0.0f };
@@ -627,30 +624,6 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   Saturation(renderGroup, 1.0f);
 
   RenderGroupOutput(renderGroup, &drawBuffer);
-
-  // for (i32 y = 0; y < 10; ++y)
-  // {
-  //   for (i32 x = 0; x < 10; ++x)
-  //   {
-  //     i32 currentX = input.mouseX + x;
-  //     i32 currentY = input.mouseY + y;
-  //     i32 index = currentY * drawBuffer.width + currentX;
-  //     if (index >= 0 && index < drawBuffer.width * drawBuffer.height)
-  //     {
-
-  //       drawBuffer.pixel[index] = 0xFFFFFFFF;
-  //     }
-  //   }
-  // }
-
-#if 0
-  //NOTE: turn on to see envmap
-  v2 scrOrigin = V2(0, 0);
-  v2 scrSize = V2((float)tranState.envMapWidth, (float)tranState.envMapHeight);
-  DrawBitmap(&drawBuffer, scrOrigin, scrOrigin + scrSize, &tranState.envMap[0].LOD[0]);
-  scrOrigin.y += scrSize.y;
-  DrawBitmap(&drawBuffer, scrOrigin, scrOrigin + scrSize, &tranState.envMap[2].LOD[0]);
-#endif
 
   if (input.f3.isDown && input.f3.halfTransitionCount == 1)
   {
