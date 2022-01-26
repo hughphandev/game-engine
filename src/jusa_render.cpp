@@ -751,7 +751,6 @@ void Draw(loaded_bitmap* drawBuffer, camera* cam, vertex* ver, i32 verCount, i32
     ver[i].pos = WorldPointToCamera(cam, ver[i].pos);
   }
 
-
   for (int i = 0; i < indexCount; i += 3)
   {
     triangle tri;

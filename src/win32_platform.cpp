@@ -12,6 +12,7 @@
 
 #include "win32_platform.h"
 #include "jusa_utils.h"
+#include "jusa_thread.h"
 
 // TODO: Global for now
 static bool g_running;
@@ -794,10 +795,141 @@ size_t StringLength(char* str)
   return result;
 }
 
+#include <intrin.h>
+
+struct win32_thread_info
+{
+  i32 logicalThreadIndex;
+  platform_work_queue* queue;
+};
+
+PLATFORM_ADD_WORK_ENTRY(Win32AddWorkEntry)
+{
+  ASSERT(queue->entryIndex < ARRAY_COUNT(queue->entries));
+
+  queue->entries[queue->entryLastIndex].callback = callback;
+  queue->entries[queue->entryLastIndex].data = data;
+  _WriteBarrier();
+  _mm_sfence();
+  queue->entryLastIndex = (queue->entryLastIndex + 1) % ARRAY_COUNT(queue->entries);
+  ++queue->entryInProgress;
+  ReleaseSemaphore(queue->semaphoreHandle, 1, 0);
+}
+
+bool HasWorkInQueue(platform_work_queue* queue)
+{
+  return (queue->entryInProgress > 0);
+}
+
+#define WORK_ENTRY_PROC(name) (void (*)(void*))name
+
+void PrintString(void* str)
+{
+  OutputDebugString((char*)str);
+}
+
+void PushString(platform_work_queue* queue, char* str)
+{
+  Win32AddWorkEntry(queue, (work_entry_callback*)OutputDebugString, str);
+}
+
+bool DoWorkQueueWork(platform_work_queue* queue, i32 logicalThreadIndex)
+{
+  //NOTE: return true when all the work has started
+  bool isWorksAllStarted = false;
+  work_queue_entry* entries = queue->entries;
+  i32 orgIndex = queue->entryIndex;
+  i32 nextIndex = (orgIndex + 1) % ARRAY_COUNT(queue->entries);
+  if (orgIndex != queue->entryLastIndex)
+  {
+    i32 index = InterlockedCompareExchange((LONG volatile*)&queue->entryIndex, nextIndex, orgIndex);
+
+    if (orgIndex == index)
+    {
+      _ReadBarrier();
+      entries[index].callback(entries[index].data);
+      entries[index].currentThreadIndex = logicalThreadIndex;
+
+      InterlockedDecrement((LONG volatile*)&queue->entryInProgress);
+    }
+  }
+  else
+  {
+    isWorksAllStarted = true;
+  }
+  return isWorksAllStarted;
+}
+
+DWORD WINAPI ThreadProc(LPVOID lpParam)
+{
+  win32_thread_info* info = (win32_thread_info*)lpParam;
+  platform_work_queue* queue = info->queue;
+  for (;;)
+  {
+    if (DoWorkQueueWork(queue, info->logicalThreadIndex))
+    {
+      WaitForSingleObjectEx(queue->semaphoreHandle, INFINITE, FALSE);
+    }
+  }
+}
+
+void Win32CompleteAllWork(platform_work_queue* queue)
+{
+  while (HasWorkInQueue(queue))
+  {
+    DoWorkQueueWork(queue, -1);
+  }
+
+  ASSERT(queue->entryInProgress == 0);
+  queue->entryIndex = 0;
+  queue->entryLastIndex = 0;
+}
 
 INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
                       INT cmdShow)
 {
+  win32_thread_info info[8];
+  i32 threadCount = ARRAY_COUNT(info);
+
+  i32 initialCount = 0;
+  platform_work_queue queue = {};
+  queue.semaphoreHandle = CreateSemaphoreEx(0, initialCount, threadCount, 0, 0, SEMAPHORE_ALL_ACCESS);
+
+  PlatformAddWorkEntry = (platform_add_work_entry*)Win32AddWorkEntry;
+  PlatformCompleteAllWork = (platform_complete_all_work*)Win32CompleteAllWork;
+
+  for (i32 i = 0; i < threadCount; ++i)
+  {
+    info[i].logicalThreadIndex = i;
+    info[i].queue = &queue;
+
+    DWORD threadID;
+    HANDLE threadHandle = CreateThread(0, 0, ThreadProc, &info[i], 0, &threadID);
+    CloseHandle(threadHandle);
+  }
+
+  PushString(&queue, "String A1\n");
+  PushString(&queue, "String A2\n");
+  PushString(&queue, "String A3\n");
+  PushString(&queue, "String A4\n");
+  PushString(&queue, "String A5\n");
+  PushString(&queue, "String A6\n");
+  PushString(&queue, "String A7\n");
+  PushString(&queue, "String A8\n");
+
+  Sleep(1000);
+
+  PushString(&queue, "String B1\n");
+  PushString(&queue, "String B2\n");
+  PushString(&queue, "String B3\n");
+  PushString(&queue, "String B4\n");
+  PushString(&queue, "String B5\n");
+  PushString(&queue, "String B6\n");
+  PushString(&queue, "String B7\n");
+  PushString(&queue, "String B8\n");
+
+  PlatformCompleteAllWork(&queue);
+
   //Note: Dont use MAX_PATH in release code 'cause it's wrong
   char gameStem[MAX_PATH] = {};
   char* onePastLastSlash = gameStem;
@@ -883,6 +1015,7 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
       gameMemory.DEBUGPlatformFreeMemory = DEBUGPlatformFreeMemory;
       gameMemory.DEBUGPlatformReadFile = DEBUGPlatformReadFile;
       gameMemory.DEBUGPlatformWriteFile = DEBUGPlatformWriteFile;
+      gameMemory.workQueue = &queue;
 
       uint64_t totalSize = gameMemory.permanentStorageSize + gameMemory.transientStorageSize;
 

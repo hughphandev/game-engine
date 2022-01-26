@@ -5,6 +5,7 @@
 #include "jusa_utils.h"
 #include "jusa_math.h"
 #include "jusa_memory.h"
+#include "jusa_thread.h"
 
 struct game_offscreen_buffer
 {
@@ -12,7 +13,6 @@ struct game_offscreen_buffer
   int height;
   void* memory;
 };
-
 
 #define BITMAP_PIXEL_SIZE (sizeof(u32))
 struct loaded_bitmap

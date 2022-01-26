@@ -5,6 +5,7 @@
 #include "jusa_world.h"
 #include "jusa_render.h"
 #include "jusa_math.h"
+#include "jusa_thread.h"
 
 #if INTERNAL
 struct debug_read_file_result
@@ -143,12 +144,6 @@ enum program_mode
   MODE_MENU
 };
 
-struct sprite_sheet
-{
-  loaded_bitmap sheet;
-  v2 chunkSize;
-};
-
 struct game_state
 {
   memory_arena arena;
@@ -266,6 +261,9 @@ struct game_memory
   debug_platform_free_memory* DEBUGPlatformFreeMemory;
   debug_platform_read_file* DEBUGPlatformReadFile;
   debug_platform_write_file* DEBUGPlatformWriteFile;
+
+  platform_work_queue* workQueue;
+
 #if INTERNAL
   debug_cycle_counter counter[DebugCycleCounter_Count];
 #endif
