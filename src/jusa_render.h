@@ -31,10 +31,16 @@ struct environment_map
 
 struct vertex
 {
-  //NOTE: assume pos in NDC
-  v3 pos;
+  v3 scr;
   v2 uv;
 };
+inline vertex operator-(vertex a, vertex b)
+{
+  vertex result;
+  result.scr = a.scr - b.scr;
+  result.uv = a.uv - b.uv;
+  return result;
+}
 DEFINE_SWAP(vertex)
 
 union triangle
@@ -44,6 +50,12 @@ union triangle
     vertex p0, p1, p2;
   };
   vertex p[3];
+};
+
+struct vertex_line
+{
+  vertex origin;
+  vertex dir;
 };
 
 union flat_quad

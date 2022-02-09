@@ -2,8 +2,9 @@
 #define JUSA_THREAD_H
 
 
-#define WORK_ENTRY_CALLBACK(name) void name(void*)
+#define WORK_ENTRY_CALLBACK(name) void name(void* data)
 typedef WORK_ENTRY_CALLBACK(work_entry_callback);
+
 
 struct work_queue_entry
 {
@@ -32,6 +33,5 @@ typedef PLATFORM_COMPLETE_ALL_WORK(platform_complete_all_work);
 
 static platform_add_work_entry* PlatformAddWorkEntry;
 static platform_complete_all_work* PlatformCompleteAllWork;
-
 
 #endif

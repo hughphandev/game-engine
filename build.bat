@@ -1,5 +1,5 @@
 @echo off
-set CFLAGS=-DSLOW=1 -DINTERNAL=1 -W4 -MT -wd4100 -wd4189 -wd4201 -wd4505 -wd4838 -wd4458 -nologo -Oi -Od -fp:fast -GR- -Gm- -Z7 -EHa 
+set CFLAGS=-DSLOW=1 -DINTERNAL=1 -W4 -MT -wd4100 -wd4189 -wd4201 -wd4505 -wd4838 -wd4458 -nologo -Oi -O2 -fp:fast -GR- -Gm- -Z7 -EHa 
 
 set LDLIBS=gdi32.lib user32.lib winmm.lib opengl32.lib
 

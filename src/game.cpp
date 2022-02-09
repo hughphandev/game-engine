@@ -422,6 +422,10 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   {
     InitMemoryArena(&gameState->arena, memory->permanentStorageSize - sizeof(game_state), (u8*)memory->permanentStorage + sizeof(game_state));
 
+    //NOTE: Init work queue function
+    PlatformAddWorkEntry = memory->PlatformAddWorkEntry;
+    PlatformCompleteAllWork = memory->PlatformCompleteAllWork;
+
     gameState->programMode = MODE_NORMAL;
     gameState->viewDistance = 0;
 
@@ -589,15 +593,15 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
 
   vertex ver[8];
-  ver[0].pos = { 0.0f, 0.0f, 0.0f };
-  ver[1].pos = { 1.0f, 0.0f, 0.0f };
-  ver[2].pos = { 1.0f, 1.0f, 0.0f };
-  ver[3].pos = { 0.0f, 1.0f, 0.0f };
+  ver[0].scr = { 0.0f, 0.0f, 0.0f };
+  ver[1].scr = { 1.0f, 0.0f, 0.0f };
+  ver[2].scr = { 1.0f, 1.0f, 0.0f };
+  ver[3].scr = { 0.0f, 1.0f, 0.0f };
 
-  ver[4].pos = { 0.0f, 0.0f, 1.0f };
-  ver[5].pos = { 1.0f, 0.0f, 1.0f };
-  ver[6].pos = { 1.0f, 1.0f, 1.0f };
-  ver[7].pos = { 0.0f, 1.0f, 1.0f };
+  ver[4].scr = { 0.0f, 0.0f, 1.0f };
+  ver[5].scr = { 1.0f, 0.0f, 1.0f };
+  ver[6].scr = { 1.0f, 1.0f, 1.0f };
+  ver[7].scr = { 0.0f, 1.0f, 1.0f };
 
   ver[0].uv = { 0.0f, 0.0f };
   ver[1].uv = { 1.0f, 0.0f };
@@ -612,18 +616,24 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   i32 index[] = {
     0, 1, 2,
     0, 2, 3,
+  };
+  i32 index2[] = {
     4, 5, 6,
     4, 6, 7,
   };
 
+
   v4 col = V4(1.0f, 1.0f, 1.0f, 1.0f);
   CoordinateSystem(renderGroup, ver, ARRAY_COUNT(ver), index, ARRAY_COUNT(index), col, &gameState->bricks);
+
+  // col = V4(0.0f, 0.0f, 0.0f, 0.0f);
+  // CoordinateSystem(renderGroup, ver, ARRAY_COUNT(ver), index2, ARRAY_COUNT(index2), col, &gameState->bricks);
 
   gameState->time += input.dt;
 
   Saturation(renderGroup, 1.0f);
 
-  RenderGroupOutput(renderGroup, &drawBuffer);
+  RenderGroupOutput(memory->workQueue, renderGroup, &drawBuffer);
 
   if (input.f3.isDown && input.f3.halfTransitionCount == 1)
   {

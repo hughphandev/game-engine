@@ -880,9 +880,9 @@ void Win32CompleteAllWork(platform_work_queue* queue)
     DoWorkQueueWork(queue, -1);
   }
 
-  ASSERT(queue->entryInProgress == 0);
   queue->entryIndex = 0;
   queue->entryLastIndex = 0;
+
 }
 
 INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
@@ -895,8 +895,6 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
   platform_work_queue queue = {};
   queue.semaphoreHandle = CreateSemaphoreEx(0, initialCount, threadCount, 0, 0, SEMAPHORE_ALL_ACCESS);
 
-  PlatformAddWorkEntry = (platform_add_work_entry*)Win32AddWorkEntry;
-  PlatformCompleteAllWork = (platform_complete_all_work*)Win32CompleteAllWork;
 
   for (i32 i = 0; i < threadCount; ++i)
   {
@@ -907,28 +905,6 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
     HANDLE threadHandle = CreateThread(0, 0, ThreadProc, &info[i], 0, &threadID);
     CloseHandle(threadHandle);
   }
-
-  PushString(&queue, "String A1\n");
-  PushString(&queue, "String A2\n");
-  PushString(&queue, "String A3\n");
-  PushString(&queue, "String A4\n");
-  PushString(&queue, "String A5\n");
-  PushString(&queue, "String A6\n");
-  PushString(&queue, "String A7\n");
-  PushString(&queue, "String A8\n");
-
-  Sleep(1000);
-
-  PushString(&queue, "String B1\n");
-  PushString(&queue, "String B2\n");
-  PushString(&queue, "String B3\n");
-  PushString(&queue, "String B4\n");
-  PushString(&queue, "String B5\n");
-  PushString(&queue, "String B6\n");
-  PushString(&queue, "String B7\n");
-  PushString(&queue, "String B8\n");
-
-  PlatformCompleteAllWork(&queue);
 
   //Note: Dont use MAX_PATH in release code 'cause it's wrong
   char gameStem[MAX_PATH] = {};
@@ -1016,6 +992,9 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
       gameMemory.DEBUGPlatformReadFile = DEBUGPlatformReadFile;
       gameMemory.DEBUGPlatformWriteFile = DEBUGPlatformWriteFile;
       gameMemory.workQueue = &queue;
+
+      gameMemory.PlatformAddWorkEntry = (platform_add_work_entry*)Win32AddWorkEntry;
+      gameMemory.PlatformCompleteAllWork = (platform_complete_all_work*)Win32CompleteAllWork;
 
       uint64_t totalSize = gameMemory.permanentStorageSize + gameMemory.transientStorageSize;
 

@@ -261,6 +261,8 @@ struct game_memory
   debug_platform_free_memory* DEBUGPlatformFreeMemory;
   debug_platform_read_file* DEBUGPlatformReadFile;
   debug_platform_write_file* DEBUGPlatformWriteFile;
+  platform_add_work_entry* PlatformAddWorkEntry;
+  platform_complete_all_work* PlatformCompleteAllWork;
 
   platform_work_queue* workQueue;
 
