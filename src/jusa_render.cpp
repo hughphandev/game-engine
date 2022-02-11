@@ -678,9 +678,9 @@ void DrawFlatQuadTex(platform_work_queue* queue, loaded_bitmap* drawBuffer, load
   float minY = Max(bound.p0.scr.y, 0.0f);
   float maxY = Min(bound.p1.scr.y, scrSize.y);
 
-  i32 partCount = 4;
+  const i32 partCount = 4;
   float stepY = (maxY - minY) * (1.0f / (float)partCount);
-  fill_flat_quad_work* workArr = (fill_flat_quad_work*)malloc(sizeof(fill_flat_quad_work) * partCount);
+  fill_flat_quad_work workArr[partCount];
   for (i32 i = 0; i < partCount; ++i)
   {
     fill_flat_quad_work* work = workArr + i;
@@ -691,7 +691,6 @@ void DrawFlatQuadTex(platform_work_queue* queue, loaded_bitmap* drawBuffer, load
     PlatformAddWorkEntry(queue, FillFlatQuadTexWork, work);
   }
   PlatformCompleteAllWork(queue);
-  free(workArr);
 }
 
 void DrawTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera* cam, triangle tri, v4 color, loaded_bitmap* bitmap)

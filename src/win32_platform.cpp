@@ -880,21 +880,6 @@ void Win32CompleteAllWork(platform_work_queue* queue)
   queue->completionGoal = 0;
 }
 
-struct fill_work
-{
-  i32* arr;
-  i32 start, end;
-};
-
-WORK_ENTRY_CALLBACK(FillArray)
-{
-  fill_work* entry = (fill_work*)data;
-  for (i32 i = entry->start; i < entry->end; ++i)
-  {
-    entry->arr[i] = 1;
-  }
-}
-
 INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, INT cmdShow)
 {
   win32_thread_info info[8];
@@ -914,18 +899,6 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, 
     HANDLE threadHandle = CreateThread(0, 0, ThreadProc, &info[i], 0, &threadID);
     CloseHandle(threadHandle);
   }
-
-  i32 arr[20];
-  for (i32 i = 0; i < 20; i += 5)
-  {
-    fill_work* work = (fill_work*)malloc(sizeof(fill_work));
-    work->arr = arr;
-    work->start = i;
-    work->end = i + 5;
-
-    Win32AddWorkEntry(&queue, FillArray, work);
-  }
-  Win32CompleteAllWork(&queue);
 
   //Note: Dont use MAX_PATH in release code 'cause it's wrong
   char gameStem[MAX_PATH] = {};

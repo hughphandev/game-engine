@@ -1,9 +1,21 @@
 # game-engine
 a experimental game engine for educational purposes!
 
-# Current features
-## Ingame level editor (hotkey: 'f1')
-add or remove entities in games, lmb to add, rmb to remove
+# Features Overview
+## Features Done (for now)
+- Assets Loading: BMP, WAV
+- Memory Managerment: custom
+- Graphic: software renderer
+- Audio: stereo
+- Input: mouse and keyboard
+- Physics: 2D AABB collision detection and resolution
+- Code hotloading: recompile parts of code while the game is running
+- Game-Loop Record and Playback: record initial state of the game and playback when neccessary
+- Multi-Threading: basics work queue
 
-## Game-loop record and playback (hotkey: 'k' for record, 'l' for playback)
-record game state and player input to playback when needed, useful when tweak something like motion.
+## Features In Progress
+- Lighting
+## Features TODO
+- Font Rendering
+- 3D AABB collision detection
+- Hardware Acceleration
