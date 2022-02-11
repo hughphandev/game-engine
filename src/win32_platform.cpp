@@ -805,20 +805,18 @@ struct win32_thread_info
 
 PLATFORM_ADD_WORK_ENTRY(Win32AddWorkEntry)
 {
-  ASSERT(queue->entryIndex < ARRAY_COUNT(queue->entries));
+  i32 entryToWrite = queue->entryToWrite;
+  i32 nextEntryToWrite = (queue->entryToWrite + 1) % ARRAY_COUNT(queue->entries);
 
-  queue->entries[queue->entryLastIndex].callback = callback;
-  queue->entries[queue->entryLastIndex].data = data;
+  ASSERT(nextEntryToWrite != queue->entryToRead);
+
+  queue->entries[entryToWrite].callback = callback;
+  queue->entries[entryToWrite].data = data;
+  ++queue->completionGoal;
   _WriteBarrier();
   _mm_sfence();
-  queue->entryLastIndex = (queue->entryLastIndex + 1) % ARRAY_COUNT(queue->entries);
-  ++queue->entryInProgress;
+  queue->entryToWrite = nextEntryToWrite;
   ReleaseSemaphore(queue->semaphoreHandle, 1, 0);
-}
-
-bool HasWorkInQueue(platform_work_queue* queue)
-{
-  return (queue->entryInProgress > 0);
 }
 
 #define WORK_ENTRY_PROC(name) (void (*)(void*))name
@@ -833,24 +831,22 @@ void PushString(platform_work_queue* queue, char* str)
   Win32AddWorkEntry(queue, (work_entry_callback*)OutputDebugString, str);
 }
 
-bool DoWorkQueueWork(platform_work_queue* queue, i32 logicalThreadIndex)
+bool DoNextWorkQueueEntry(platform_work_queue* queue)
 {
   //NOTE: return true when all the work has started
   bool isWorksAllStarted = false;
-  work_queue_entry* entries = queue->entries;
-  i32 orgIndex = queue->entryIndex;
-  i32 nextIndex = (orgIndex + 1) % ARRAY_COUNT(queue->entries);
-  if (orgIndex != queue->entryLastIndex)
+  volatile work_queue_entry* entries = queue->entries;
+  i32 orgEntryToRead = queue->entryToRead;
+  i32 nextEntryToRead = (orgEntryToRead + 1) % ARRAY_COUNT(queue->entries);
+  if (orgEntryToRead != queue->entryToWrite)
   {
-    i32 index = InterlockedCompareExchange((LONG volatile*)&queue->entryIndex, nextIndex, orgIndex);
+    i32 index = InterlockedCompareExchange((LONG volatile*)&queue->entryToRead, nextEntryToRead, orgEntryToRead);
 
-    if (orgIndex == index)
+    if (index == orgEntryToRead)
     {
-      _ReadBarrier();
       entries[index].callback(entries[index].data);
-      entries[index].currentThreadIndex = logicalThreadIndex;
 
-      InterlockedDecrement((LONG volatile*)&queue->entryInProgress);
+      InterlockedIncrement((LONG volatile*)&queue->completionCount);
     }
   }
   else
@@ -866,7 +862,7 @@ DWORD WINAPI ThreadProc(LPVOID lpParam)
   platform_work_queue* queue = info->queue;
   for (;;)
   {
-    if (DoWorkQueueWork(queue, info->logicalThreadIndex))
+    if (DoNextWorkQueueEntry(queue))
     {
       WaitForSingleObjectEx(queue->semaphoreHandle, INFINITE, FALSE);
     }
@@ -875,18 +871,31 @@ DWORD WINAPI ThreadProc(LPVOID lpParam)
 
 void Win32CompleteAllWork(platform_work_queue* queue)
 {
-  while (HasWorkInQueue(queue))
+  while (queue->completionCount != queue->completionGoal);
   {
-    DoWorkQueueWork(queue, -1);
+    DoNextWorkQueueEntry(queue);
   }
 
-  queue->entryIndex = 0;
-  queue->entryLastIndex = 0;
-
+  queue->completionCount = 0;
+  queue->completionGoal = 0;
 }
 
-INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
-                      INT cmdShow)
+struct fill_work
+{
+  i32* arr;
+  i32 start, end;
+};
+
+WORK_ENTRY_CALLBACK(FillArray)
+{
+  fill_work* entry = (fill_work*)data;
+  for (i32 i = entry->start; i < entry->end; ++i)
+  {
+    entry->arr[i] = 1;
+  }
+}
+
+INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, INT cmdShow)
 {
   win32_thread_info info[8];
   i32 threadCount = ARRAY_COUNT(info);
@@ -905,6 +914,18 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine,
     HANDLE threadHandle = CreateThread(0, 0, ThreadProc, &info[i], 0, &threadID);
     CloseHandle(threadHandle);
   }
+
+  i32 arr[20];
+  for (i32 i = 0; i < 20; i += 5)
+  {
+    fill_work* work = (fill_work*)malloc(sizeof(fill_work));
+    work->arr = arr;
+    work->start = i;
+    work->end = i + 5;
+
+    Win32AddWorkEntry(&queue, FillArray, work);
+  }
+  Win32CompleteAllWork(&queue);
 
   //Note: Dont use MAX_PATH in release code 'cause it's wrong
   char gameStem[MAX_PATH] = {};

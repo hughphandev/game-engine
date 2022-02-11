@@ -626,8 +626,8 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   v4 col = V4(1.0f, 1.0f, 1.0f, 1.0f);
   CoordinateSystem(renderGroup, ver, ARRAY_COUNT(ver), index, ARRAY_COUNT(index), col, &gameState->bricks);
 
-  // col = V4(0.0f, 0.0f, 0.0f, 0.0f);
-  // CoordinateSystem(renderGroup, ver, ARRAY_COUNT(ver), index2, ARRAY_COUNT(index2), col, &gameState->bricks);
+  col = V4(0.0f, 0.0f, 0.0f, 0.0f);
+  CoordinateSystem(renderGroup, ver, ARRAY_COUNT(ver), index2, ARRAY_COUNT(index2), col, &gameState->bricks);
 
   gameState->time += input.dt;
 

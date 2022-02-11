@@ -8,20 +8,17 @@ typedef WORK_ENTRY_CALLBACK(work_entry_callback);
 
 struct work_queue_entry
 {
-  struct
-  {
-    //TODO: debug info
-    i32 currentThreadIndex;
-  };
   work_entry_callback* callback;
   void* data;
 };
 
 struct platform_work_queue
 {
-  i32 entryIndex;
-  i32 entryLastIndex;
-  i32 entryInProgress;
+  i32 volatile  completionGoal;
+  i32 volatile completionCount;
+
+  i32 volatile entryToRead;
+  i32 volatile entryToWrite;
   void* semaphoreHandle;
   work_queue_entry entries[255];
 };
