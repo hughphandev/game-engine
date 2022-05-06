@@ -34,6 +34,7 @@ struct vertex
   v3 scr;
   v2 uv;
 };
+
 inline vertex operator-(vertex a, vertex b)
 {
   vertex result;
@@ -66,6 +67,13 @@ union flat_quad
   {
     vertex p0, p1, p2, p3;
   };
+};
+
+struct directional_light
+{
+ v3 dir;
+ v3 diffuse;
+ v3 ambient;
 };
 
 enum render_entry_type

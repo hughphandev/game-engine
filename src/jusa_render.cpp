@@ -664,7 +664,7 @@ WORK_ENTRY_CALLBACK(FillFlatQuadTexWork)
   FillFlatQuadTex(work->drawBuffer, work->bitmap, work->cam, work->color, work->lineL, work->lineR, work->startY, work->endY);
 }
 
-void DrawFlatQuadTex(platform_work_queue* queue, loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* cam, v4 color, flat_quad bound)
+void DrawFlatQuadTex(platform_work_queue* queue, loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* cam, flat_quad bound, v3 faceNormal, v4 color)
 {
   v2 scrSize = V2(drawBuffer->width, drawBuffer->height);
 
@@ -693,7 +693,7 @@ void DrawFlatQuadTex(platform_work_queue* queue, loaded_bitmap* drawBuffer, load
   PlatformCompleteAllWork(queue);
 }
 
-void DrawTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera* cam, triangle tri, v4 color, loaded_bitmap* bitmap)
+void DrawTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera* cam, triangle tri, v3 faceNormal, v4 color, loaded_bitmap* bitmap)
 {
   BEGIN_TIMER_BLOCK(DrawTriangle);
 
@@ -751,18 +751,18 @@ void DrawTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera*
   bound.p1 = { scrMiddleL, uvMiddleL };
   bound.p2 = tri.p0;
   bound.p3 = { scrMiddleR, uvMiddleR };
-  DrawFlatQuadTex(queue, drawBuffer, bitmap, cam, color, bound);
+  DrawFlatQuadTex(queue, drawBuffer, bitmap, cam, bound, faceNormal, color);
 
   bound.p0 = { scrMiddleL, uvMiddleL };
   bound.p1 = tri.p2;
   bound.p2 = { scrMiddleR, uvMiddleR };
   bound.p3 = tri.p2;
-  DrawFlatQuadTex(queue, drawBuffer, bitmap, cam, color, bound);
+  DrawFlatQuadTex(queue, drawBuffer, bitmap, cam, bound, faceNormal, color);
 
   END_TIMER_BLOCK(DrawTriangle)
 }
 
-void ProcessTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera* cam, triangle tri, loaded_bitmap* texture, v4 color)
+void ProcessTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera* cam, triangle tri, v3 faceNormal, loaded_bitmap* texture, v4 color)
 {
   for (int i = 0; i < ARRAY_COUNT(tri.p); ++i)
   {
@@ -771,12 +771,13 @@ void ProcessTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, came
 
     tri.p[i].scr = CameraPointToNDC(cam, tri.p[i].scr);
   }
-  DrawTriangle(queue, drawBuffer, cam, tri, color, texture);
-  DrawTriangle(queue, drawBuffer, cam, tri, color, texture);
+  DrawTriangle(queue, drawBuffer, cam, tri, faceNormal, color, texture);
+  DrawTriangle(queue, drawBuffer, cam, tri, faceNormal, color, texture);
 }
 
 void Draw(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera* cam, vertex* ver, i32 verCount, i32* index, i32 indexCount, loaded_bitmap* texture, v4 color)
 {
+  v3 faceNormal = V3(0.0f, 1.0f, 0.0f);
   for (int i = 0; i < verCount; ++i)
   {
     //NOTE: vertex shader
@@ -795,7 +796,7 @@ void Draw(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera* cam, ve
     //NOTE: backface culling
     if (Dot(tri.p0.scr, normal) > 0.0f)
     {
-      ProcessTriangle(queue, drawBuffer, cam, tri, texture, color);
+      ProcessTriangle(queue, drawBuffer, cam, tri, faceNormal, texture, color);
     }
   }
 }
