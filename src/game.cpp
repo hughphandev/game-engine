@@ -622,12 +622,24 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     4, 6, 7,
   };
 
+  v3 fNormal1[] = {
+    {0.0f, 1.0f, 0.0f},
+    {0.0f, 1.0f, 0.0f},
+  };
+
+  v3 fNormal2[] = {
+    {0.0f, 1.0f, 0.0f},
+    {0.0f, 1.0f, 0.0f},
+  };
+
 
   v4 col = V4(1.0f, 1.0f, 1.0f, 1.0f);
-  CoordinateSystem(renderGroup, ver, ARRAY_COUNT(ver), index, ARRAY_COUNT(index), col, &gameState->bricks);
+  directional_light light = {};
+  light.dir = {1.0f/Sqrt(2), -1.0f/Sqrt(2), 0.0f};
+  CoordinateSystem(renderGroup, light, ver, ARRAY_COUNT(ver), index, ARRAY_COUNT(index), fNormal1, col, &gameState->bricks);
 
   col = V4(0.0f, 0.0f, 0.0f, 0.0f);
-  CoordinateSystem(renderGroup, ver, ARRAY_COUNT(ver), index2, ARRAY_COUNT(index2), col, &gameState->bricks);
+  CoordinateSystem(renderGroup, light, ver, ARRAY_COUNT(ver), index2, ARRAY_COUNT(index2), fNormal2, col, &gameState->bricks);
 
   gameState->time += input.dt;
 

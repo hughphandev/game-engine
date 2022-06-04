@@ -71,9 +71,9 @@ union flat_quad
 
 struct directional_light
 {
- v3 dir;
- v3 diffuse;
- v3 ambient;
+  v3 dir;
+  v3 diffuse;
+  v3 ambient;
 };
 
 enum render_entry_type
@@ -108,6 +108,8 @@ struct render_entry_coordinate_system
   i32 verCount;
   i32* index;
   i32 indexCount;
+  v3* faceNormals;
+  directional_light light;
 
   v4 col;
   loaded_bitmap* bitmap;

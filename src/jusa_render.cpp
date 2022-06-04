@@ -429,7 +429,7 @@ vertex ShilfPointToNextCol(vertex origin, vertex dir)
   return result;
 }
 
-void FillFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* cam, v4 color, vertex_line lineL, vertex_line lineR, float startY, float endY)
+void FillFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* cam, directional_light light, v3 faceNormal, v4 color, vertex_line lineL, vertex_line lineR, float startY, float endY)
 {
   v2 scrSize = V2(drawBuffer->width, drawBuffer->height);
   v2 bitmapMax = V2(bitmap->width - 1, bitmap->height - 1);
@@ -447,6 +447,8 @@ void FillFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* c
 
   __m128 bitmapMaxX_x4 = _mm_set_ps1(bitmapMax.x);
   __m128 bitmapMaxY_x4 = _mm_set_ps1(bitmapMax.y);
+
+  __m128 lightMul_x4 = _mm_set_ps1(Dot(-light.dir, faceNormal));
 
   for (float y = startY; y < endY; ++y)
   {
@@ -587,6 +589,10 @@ void FillFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* c
       __m128 texelB_x4 = _mm_add_ps(sampleX1B, _mm_mul_ps(tX_x4, _mm_sub_ps(sampleX2B, sampleX1B)));
       __m128 texelA_x4 = _mm_add_ps(sampleX1A, _mm_mul_ps(tX_x4, _mm_sub_ps(sampleX2A, sampleX1A)));
 
+      texelR_x4 = _mm_mul_ps(texelR_x4, lightMul_x4);
+      texelG_x4 = _mm_mul_ps(texelG_x4, lightMul_x4);
+      texelB_x4 = _mm_mul_ps(texelB_x4, lightMul_x4);
+
       texelR_x4 = _mm_max_ps(texelR_x4, zero_x4);
       texelG_x4 = _mm_max_ps(texelG_x4, zero_x4);
       texelB_x4 = _mm_max_ps(texelB_x4, zero_x4);
@@ -651,6 +657,8 @@ struct fill_flat_quad_work
   loaded_bitmap* drawBuffer;
   loaded_bitmap* bitmap;
   camera* cam;
+  directional_light light;
+  v3 faceNormal;
   v4 color;
   vertex_line lineL;
   vertex_line lineR;
@@ -661,10 +669,10 @@ struct fill_flat_quad_work
 WORK_ENTRY_CALLBACK(FillFlatQuadTexWork)
 {
   fill_flat_quad_work* work = (fill_flat_quad_work*)data;
-  FillFlatQuadTex(work->drawBuffer, work->bitmap, work->cam, work->color, work->lineL, work->lineR, work->startY, work->endY);
+  FillFlatQuadTex(work->drawBuffer, work->bitmap, work->cam, work->light, work->faceNormal, work->color, work->lineL, work->lineR, work->startY, work->endY);
 }
 
-void DrawFlatQuadTex(platform_work_queue* queue, loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* cam, flat_quad bound, v3 faceNormal, v4 color)
+void DrawFlatQuadTex(platform_work_queue* queue, loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* cam, directional_light light, flat_quad bound, v3 faceNormal, v4 color)
 {
   v2 scrSize = V2(drawBuffer->width, drawBuffer->height);
 
@@ -686,14 +694,14 @@ void DrawFlatQuadTex(platform_work_queue* queue, loaded_bitmap* drawBuffer, load
     fill_flat_quad_work* work = workArr + i;
     float startY = Ceil(minY + ((float)i * stepY));
     float endY = Ceil(minY + ((float)(i + 1) * stepY));
-    *work = { drawBuffer, bitmap, cam, color, lineL, lineR , startY, endY };
+    *work = { drawBuffer, bitmap, cam, light, faceNormal, color, lineL, lineR , startY, endY };
 
     PlatformAddWorkEntry(queue, FillFlatQuadTexWork, work);
   }
   PlatformCompleteAllWork(queue);
 }
 
-void DrawTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera* cam, triangle tri, v3 faceNormal, v4 color, loaded_bitmap* bitmap)
+void DrawTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera* cam, directional_light light, triangle tri, v3 faceNormals, v4 color, loaded_bitmap* bitmap)
 {
   BEGIN_TIMER_BLOCK(DrawTriangle);
 
@@ -751,18 +759,18 @@ void DrawTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera*
   bound.p1 = { scrMiddleL, uvMiddleL };
   bound.p2 = tri.p0;
   bound.p3 = { scrMiddleR, uvMiddleR };
-  DrawFlatQuadTex(queue, drawBuffer, bitmap, cam, bound, faceNormal, color);
+  DrawFlatQuadTex(queue, drawBuffer, bitmap, cam, light, bound, faceNormals, color);
 
   bound.p0 = { scrMiddleL, uvMiddleL };
   bound.p1 = tri.p2;
   bound.p2 = { scrMiddleR, uvMiddleR };
   bound.p3 = tri.p2;
-  DrawFlatQuadTex(queue, drawBuffer, bitmap, cam, bound, faceNormal, color);
+  DrawFlatQuadTex(queue, drawBuffer, bitmap, cam, light, bound, faceNormals, color);
 
   END_TIMER_BLOCK(DrawTriangle)
 }
 
-void ProcessTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera* cam, triangle tri, v3 faceNormal, loaded_bitmap* texture, v4 color)
+void ProcessTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera* cam, directional_light light, triangle tri, v3 faceNormal, loaded_bitmap* texture, v4 color)
 {
   for (int i = 0; i < ARRAY_COUNT(tri.p); ++i)
   {
@@ -771,13 +779,12 @@ void ProcessTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, came
 
     tri.p[i].scr = CameraPointToNDC(cam, tri.p[i].scr);
   }
-  DrawTriangle(queue, drawBuffer, cam, tri, faceNormal, color, texture);
-  DrawTriangle(queue, drawBuffer, cam, tri, faceNormal, color, texture);
+  DrawTriangle(queue, drawBuffer, cam, light, tri, faceNormal, color, texture);
+  DrawTriangle(queue, drawBuffer, cam, light, tri, faceNormal, color, texture);
 }
 
-void Draw(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera* cam, vertex* ver, i32 verCount, i32* index, i32 indexCount, loaded_bitmap* texture, v4 color)
+void Draw(platform_work_queue* queue, loaded_bitmap* drawBuffer, directional_light light, camera* cam, vertex* ver, i32 verCount, i32* index, i32 indexCount, v3* faceNormals, loaded_bitmap* texture, v4 color)
 {
-  v3 faceNormal = V3(0.0f, 1.0f, 0.0f);
   for (int i = 0; i < verCount; ++i)
   {
     //NOTE: vertex shader
@@ -796,7 +803,7 @@ void Draw(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera* cam, ve
     //NOTE: backface culling
     if (Dot(tri.p0.scr, normal) > 0.0f)
     {
-      ProcessTriangle(queue, drawBuffer, cam, tri, faceNormal, texture, color);
+      ProcessTriangle(queue, drawBuffer, cam, light, tri, faceNormals[i / 3], texture, color);
     }
   }
 }
@@ -1061,7 +1068,7 @@ static void RenderGroupOutput(platform_work_queue* queue, render_group* renderGr
         render_entry_coordinate_system* entry = (render_entry_coordinate_system*)((u8*)renderGroup->pushBuffer.base + index);
         index += sizeof(*entry);
 
-        Draw(queue, drawBuffer, renderGroup->cam, entry->ver, entry->verCount, entry->index, entry->indexCount, entry->bitmap, entry->col);
+        Draw(queue, drawBuffer, entry->light, renderGroup->cam, entry->ver, entry->verCount, entry->index, entry->indexCount, entry->faceNormals, entry->bitmap, entry->col);
       } break;
 
       INVALID_DEFAULT_CASE;
@@ -1158,7 +1165,7 @@ inline render_entry_rectangle_outline* PushRectOutline(render_group* renderGroup
   return entry;
 }
 
-inline render_entry_coordinate_system* CoordinateSystem(render_group* renderGroup, vertex* ver, i32 verCount, i32* index, i32 indexCount, v4 col, loaded_bitmap* bitmap)
+inline render_entry_coordinate_system* CoordinateSystem(render_group* renderGroup, directional_light light, vertex* ver, i32 verCount, i32* index, i32 indexCount, v3* faceNormals, v4 col, loaded_bitmap* bitmap)
 {
   render_entry_coordinate_system* entry = PUSH_RENDER_ELEMENT(renderGroup, render_entry_coordinate_system);
   if (entry)
@@ -1167,6 +1174,8 @@ inline render_entry_coordinate_system* CoordinateSystem(render_group* renderGrou
     entry->verCount = verCount;
     entry->index = index;
     entry->indexCount = indexCount;
+    entry->faceNormals = faceNormals;
+    entry->light = light;
 
     entry->col = col;
     entry->bitmap = bitmap;
