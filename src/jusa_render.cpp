@@ -447,11 +447,11 @@ void FillFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* c
 
   __m128 bitmapMaxX_x4 = _mm_set_ps1(bitmapMax.x);
   __m128 bitmapMaxY_x4 = _mm_set_ps1(bitmapMax.y);
-  
-  float lightMul = Dot(-light.dir, faceNormal);
-  __m128 lightMulR_x4 = _mm_set_ps1(lightMul * light.diffuse.x);
-  __m128 lightMulG_x4 = _mm_set_ps1(lightMul * light.diffuse.y);
-  __m128 lightMulB_x4 = _mm_set_ps1(lightMul * light.diffuse.z);
+
+  float lightMul = Max(Dot(-light.dir, faceNormal), 0.0f);
+  __m128 lightMulR_x4 = _mm_set_ps1((lightMul * light.diffuse.x) + light.ambient.x);
+  __m128 lightMulG_x4 = _mm_set_ps1((lightMul * light.diffuse.y) + light.ambient.y);
+  __m128 lightMulB_x4 = _mm_set_ps1((lightMul * light.diffuse.z) + light.ambient.z);
 
   for (float y = startY; y < endY; ++y)
   {
