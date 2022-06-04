@@ -635,7 +635,8 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
   v4 col = V4(1.0f, 1.0f, 1.0f, 1.0f);
   directional_light light = {};
-  light.dir = {1.0f/Sqrt(2), -1.0f/Sqrt(2), 0.0f};
+  light.dir = {0.0f, -1.0f, 0.0f};
+  light.diffuse = {1.0f, 1.0f, 1.0f};
   CoordinateSystem(renderGroup, light, ver, ARRAY_COUNT(ver), index, ARRAY_COUNT(index), fNormal1, col, &gameState->bricks);
 
   col = V4(0.0f, 0.0f, 0.0f, 0.0f);

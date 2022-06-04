@@ -447,8 +447,11 @@ void FillFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* c
 
   __m128 bitmapMaxX_x4 = _mm_set_ps1(bitmapMax.x);
   __m128 bitmapMaxY_x4 = _mm_set_ps1(bitmapMax.y);
-
-  __m128 lightMul_x4 = _mm_set_ps1(Dot(-light.dir, faceNormal));
+  
+  float lightMul = Dot(-light.dir, faceNormal);
+  __m128 lightMulR_x4 = _mm_set_ps1(lightMul * light.diffuse.x);
+  __m128 lightMulG_x4 = _mm_set_ps1(lightMul * light.diffuse.y);
+  __m128 lightMulB_x4 = _mm_set_ps1(lightMul * light.diffuse.z);
 
   for (float y = startY; y < endY; ++y)
   {
@@ -589,9 +592,9 @@ void FillFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* c
       __m128 texelB_x4 = _mm_add_ps(sampleX1B, _mm_mul_ps(tX_x4, _mm_sub_ps(sampleX2B, sampleX1B)));
       __m128 texelA_x4 = _mm_add_ps(sampleX1A, _mm_mul_ps(tX_x4, _mm_sub_ps(sampleX2A, sampleX1A)));
 
-      texelR_x4 = _mm_mul_ps(texelR_x4, lightMul_x4);
-      texelG_x4 = _mm_mul_ps(texelG_x4, lightMul_x4);
-      texelB_x4 = _mm_mul_ps(texelB_x4, lightMul_x4);
+      texelR_x4 = _mm_mul_ps(texelR_x4, lightMulR_x4);
+      texelG_x4 = _mm_mul_ps(texelG_x4, lightMulG_x4);
+      texelB_x4 = _mm_mul_ps(texelB_x4, lightMulB_x4);
 
       texelR_x4 = _mm_max_ps(texelR_x4, zero_x4);
       texelG_x4 = _mm_max_ps(texelG_x4, zero_x4);
