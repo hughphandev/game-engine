@@ -11,11 +11,11 @@ a experimental game engine for educational purposes!
 - Physics: 2D AABB collision detection and resolution
 - Code hotloading: recompile parts of code while the game is running
 - Game-Loop Record and Playback: record initial state of the game and playback when neccessary
-- Multi-Threading: basics work queue
+- Multi-Threading: basic work queue
+- Lighting: basic directional lighting
 
 ## Features In Progress
-- Lighting
-## Features TODO
 - Font Rendering
+## Features TODO
 - 3D AABB collision detection
 - Hardware Acceleration
