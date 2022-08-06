@@ -44,14 +44,14 @@ struct debug_cycle_counter
 
 extern struct game_memory* g_memory;
 #if _MSC_VER
-#define COUNTER(ID) int ID = 0;
-#define ADD_COUNTER(ID, i) ID += i;
+// #define COUNTER(ID) int ID = 0;
+// #define ADD_COUNTER(ID, i) ID += i;
 #define BEGIN_TIMER_BLOCK(ID) u64 startCycleCounter##ID = __rdtsc();
 #define END_TIMER_BLOCK(ID) g_memory->counter[DebugCycleCounter_##ID].cycleCount += __rdtsc() - startCycleCounter##ID; ++g_memory->counter[DebugCycleCounter_##ID].hitCount;
 #define END_TIMER_BLOCK_COUNTED(ID, count) g_memory->counter[DebugCycleCounter_##ID].cycleCount += __rdtsc() - startCycleCounter##ID; g_memory->counter[DebugCycleCounter_##ID].hitCount += count;
 #else
-#define COUNTER(ID)
-#define ADD_COUNTER(ID, i)
+// #define COUNTER(ID)
+// #define ADD_COUNTER(ID, i)
 #define BEGIN_TIMER_BLOCK(ID)
 #define END_TIMER_BLOCK(ID) 
 #define END_TIMER_BLOCK_COUNTED(ID, count) 

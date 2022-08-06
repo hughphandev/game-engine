@@ -156,6 +156,7 @@ static void DrawRectangleOutline(loaded_bitmap* buffer, v2 min, v2 max, u32 thic
 
 static void ChangeSaturation(loaded_bitmap* buffer, float level)
 {
+  //TODO: Optimize Performance
   u32* pixel = buffer->pixel;
 
   for (int y = 0; y < buffer->height; ++y)
@@ -1026,14 +1027,6 @@ static void RenderGroupOutput(platform_work_queue* queue, render_group* renderGr
 
     switch (header->type)
     {
-      case RENDER_TYPE_render_entry_clear:
-      {
-        render_entry_clear* entry = (render_entry_clear*)((u8*)renderGroup->pushBuffer.base + index);
-        index += sizeof(*entry);
-
-        ClearBuffer(drawBuffer, entry->color.ToU32());
-      } break;
-
       case RENDER_TYPE_render_entry_saturation:
       {
         render_entry_saturation* entry = (render_entry_saturation*)((u8*)renderGroup->pushBuffer.base + index);
@@ -1067,6 +1060,14 @@ static void RenderGroupOutput(platform_work_queue* queue, render_group* renderGr
 
       } break;
 
+      case RENDER_TYPE_render_entry_clear:
+      {
+        render_entry_clear* entry = (render_entry_clear*)((u8*)renderGroup->pushBuffer.base + index);
+        index += sizeof(*entry);
+
+        ClearBuffer(drawBuffer, entry->color.ToU32());
+      } break;
+
       case RENDER_TYPE_render_entry_mesh:
       {
         render_entry_mesh* entry = (render_entry_mesh*)((u8*)renderGroup->pushBuffer.base + index);
@@ -1075,7 +1076,7 @@ static void RenderGroupOutput(platform_work_queue* queue, render_group* renderGr
         Draw(queue, drawBuffer, entry->light, renderGroup->cam, entry->ver, entry->verCount, entry->index, entry->indexCount, entry->faceNormals, entry->bitmap, entry->col);
       } break;
 
-      INVALID_DEFAULT_CASE;
+      // INVALID_DEFAULT_CASE;
     }
   }
 

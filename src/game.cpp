@@ -639,8 +639,6 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
   gameState->time += input.dt;
 
-  Saturation(renderGroup, 1.0f);
-
   RenderGroupOutput(memory->workQueue, renderGroup, &drawBuffer);
 
   if (input.f3.isDown && input.f3.halfTransitionCount == 1)
