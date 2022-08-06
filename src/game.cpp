@@ -592,50 +592,38 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   renderGroup->cam->pos += Normalize(dir.y * renderGroup->cam->dir + dir.x * Cross(V3(0, 1, 0), renderGroup->cam->dir)) * input.dt;
 
 
-  vertex ver[8];
-  ver[0].pos = { 0.0f, 0.0f, 0.0f };
-  ver[1].pos = { 1.0f, 0.0f, 0.0f };
-  ver[2].pos = { 1.0f, 1.0f, 0.0f };
-  ver[3].pos = { 0.0f, 1.0f, 0.0f };
+  vertex ver[] = {
+    { -0.5f, -0.5f, -0.5f, 0.0f, 1.0f },
+    { 0.5f, -0.5f, -0.5f, 1.0f, 1.0f },
+    { 0.5f, 0.5f, -0.5f, 1.0f, 0.0f },
+    { -0.5f, 0.5f, -0.5f, 0.0f, 0.0f },
 
-  ver[4].pos = { 0.0f, 0.0f, 1.0f };
-  ver[5].pos = { 1.0f, 0.0f, 1.0f };
-  ver[6].pos = { 1.0f, 1.0f, 1.0f };
-  ver[7].pos = { 0.0f, 1.0f, 1.0f };
-
-  ver[0].uv = { 0.0f, 0.0f };
-  ver[1].uv = { 1.0f, 0.0f };
-  ver[2].uv = { 1.0f, 1.0f };
-  ver[3].uv = { 0.0f, 1.0f };
-
-  ver[4].uv = { 0.0f, 0.0f };
-  ver[5].uv = { 1.0f, 0.0f };
-  ver[6].uv = { 1.0f, 1.0f };
-  ver[7].uv = { 0.0f, 1.0f };
+    { -0.5f, -0.5f, 0.5f, 1.0f, 1.0f },
+    { 0.5f, -0.5f, 0.5f, 0.0f, 1.0f },
+    { 0.5f, 0.5f, 0.5f, 0.0f, 0.0f },
+    { -0.5f, 0.5f, 0.5f, 1.0f, 0.0f },
+  };
 
   i32 index[] = {
-    0, 1, 2,
-    0, 2, 3,
-    4, 6, 5,
-    4, 7, 6,
-
-    0, 4, 5,
+    0, 1, 2, 2, 3, 0,
+    4, 7, 6, 6, 5, 4,
+    4, 0, 3, 3, 7, 4,
+    5, 6, 2, 2, 1, 5,
+    4, 5, 1, 1, 0, 4,
+    3, 2, 6, 6, 7, 3,
   };
 
-  v3 fNormal[] = {
-    {0.0f, 1.0f, 0.0f},
-    {0.0f, 1.0f, 0.0f},
-    {0.0f, 1.0f, 0.0f},
-    {0.0f, 1.0f, 0.0f},
-  };
-
+  for (i32 i = 0; i < ARRAY_COUNT(ver); ++i)
+  {
+    ver[i].pos = Rotate(ver[i].pos, V3(gameState->time, -gameState->time, 0.0f));
+  }
 
   v4 col = V4(1.0f, 1.0f, 1.0f, 1.0f);
   directional_light light = {};
   light.dir = { 0.0f, -1.0f, 0.0f };
   light.diffuse = { 1.0f, 1.0f, 1.0f };
   light.ambient = 0.1f * light.diffuse;
-  RenderMesh(renderGroup, light, ver, ARRAY_COUNT(ver), index, ARRAY_COUNT(index), fNormal, col, &gameState->bricks);
+  RenderMesh(renderGroup, light, ver, ARRAY_COUNT(ver), index, ARRAY_COUNT(index), col, &gameState->bricks);
 
   gameState->time += input.dt;
 

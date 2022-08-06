@@ -260,6 +260,42 @@ void MakeSphereNormalMap(loaded_bitmap* bitmap, float roughness, float cX = 1.0f
   }
 }
 
+mat4 GetRotateXMatrix(float value)
+{
+  return {
+    1, 0, 0, 0,
+    0, Cos(value), -Sin(value), 0,
+    0, Sin(value), Cos(value), 0,
+    0, 0, 0, 1,
+  };
+}
+
+mat4 GetRotateYMatrix(float value)
+{
+  return {
+    Cos(value), 0, Sin(value), 0,
+    0, 1, 0, 0,
+    -Sin(value), 0, Cos(value), 0,
+    0, 0, 0, 1,
+  };
+}
+
+mat4 GetRotateZMatrix(float value)
+{
+  return {
+    Cos(value), -Sin(value), 0, 0,
+    Sin(value), Cos(value), 0, 0,
+    0, 0, 1, 0,
+    0, 0, 0, 1,
+  };
+}
+
+v3 Rotate(v3 vec, v3 rotation)
+{
+  v4 result = GetRotateZMatrix(rotation.z) * GetRotateYMatrix(rotation.y) * GetRotateXMatrix(rotation.x) * V4(vec, 1.0f);
+  return result.xyz;
+}
+
 mat4 GetPerspectiveMatrix(camera* cam)
 {
   float a = cam->size.x / cam->size.y;
@@ -269,8 +305,7 @@ mat4 GetPerspectiveMatrix(camera* cam)
   mat4 result = {};
   result.r0 = V4(s, 0, 0, 0);
   result.r1 = V4(0, s * a, 0, 0);
-  // result.r2 = V4(0, 0, 1, 0);
-  result.r2 = V4(0, 0, cam->zFar / deltaZ, (cam->zFar * cam->zNear) / deltaZ);
+  result.r2 = V4(0, 0, cam->zFar / deltaZ, -(cam->zFar * cam->zNear) / deltaZ);
   result.r3 = V4(0, 0, 1, 0);
 
   return result;
@@ -788,8 +823,19 @@ void ProcessTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, came
   DrawTriangle(queue, drawBuffer, cam, light, tri, faceNormal, color, texture);
 }
 
-void Draw(platform_work_queue* queue, loaded_bitmap* drawBuffer, directional_light light, camera* cam, vertex* ver, i32 verCount, i32* index, i32 indexCount, v3* faceNormals, loaded_bitmap* texture, v4 color)
+void Draw(platform_work_queue* queue, loaded_bitmap* drawBuffer, directional_light light, camera* cam, vertex* ver, i32 verCount, i32* index, i32 indexCount, loaded_bitmap* texture, v4 color)
 {
+  v3* faceNormals = (v3*)_alloca(sizeof(v3) * indexCount / 3);
+  for (int i = 0; i < indexCount; i += 3)
+  {
+    triangle tri;
+    tri.p0 = ver[index[i]];
+    tri.p1 = ver[index[i + 1]];
+    tri.p2 = ver[index[i + 2]];
+
+    faceNormals[i / 3] = -Cross(tri.p1.pos - tri.p0.pos, tri.p2.pos - tri.p0.pos);
+  }
+
   for (int i = 0; i < verCount; ++i)
   {
     //NOTE: vertex shader
@@ -1073,7 +1119,7 @@ static void RenderGroupOutput(platform_work_queue* queue, render_group* renderGr
         render_entry_mesh* entry = (render_entry_mesh*)((u8*)renderGroup->pushBuffer.base + index);
         index += sizeof(*entry);
 
-        Draw(queue, drawBuffer, entry->light, renderGroup->cam, entry->ver, entry->verCount, entry->index, entry->indexCount, entry->faceNormals, entry->bitmap, entry->col);
+        Draw(queue, drawBuffer, entry->light, renderGroup->cam, entry->ver, entry->verCount, entry->index, entry->indexCount, entry->bitmap, entry->col);
       } break;
 
       // INVALID_DEFAULT_CASE;
@@ -1170,7 +1216,7 @@ inline render_entry_rectangle_outline* PushRectOutline(render_group* renderGroup
   return entry;
 }
 
-inline render_entry_mesh* RenderMesh(render_group* renderGroup, directional_light light, vertex* ver, i32 verCount, i32* index, i32 indexCount, v3* faceNormals, v4 col, loaded_bitmap* bitmap)
+inline render_entry_mesh* RenderMesh(render_group* renderGroup, directional_light light, vertex* ver, i32 verCount, i32* index, i32 indexCount, v4 col, loaded_bitmap* bitmap)
 {
   render_entry_mesh* entry = PUSH_RENDER_ELEMENT(renderGroup, render_entry_mesh);
   if (entry)
@@ -1179,7 +1225,6 @@ inline render_entry_mesh* RenderMesh(render_group* renderGroup, directional_ligh
     entry->verCount = verCount;
     entry->index = index;
     entry->indexCount = indexCount;
-    entry->faceNormals = faceNormals;
     entry->light = light;
 
     entry->col = col;

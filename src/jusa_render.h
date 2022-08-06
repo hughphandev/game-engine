@@ -108,7 +108,6 @@ struct render_entry_mesh
   i32 verCount;
   i32* index;
   i32 indexCount;
-  v3* faceNormals;
   directional_light light;
 
   v4 col;
