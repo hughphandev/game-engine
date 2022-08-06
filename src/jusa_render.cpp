@@ -268,8 +268,8 @@ mat4 GetPerspectiveMatrix(camera* cam)
   mat4 result = {};
   result.r0 = V4(s, 0, 0, 0);
   result.r1 = V4(0, s * a, 0, 0);
-  result.r2 = V4(0, 0, 1, 0);
-  // result.r2 = V4(0, 0, cam->zFar / deltaZ, (cam->zFar * cam->zNear) / deltaZ);
+  // result.r2 = V4(0, 0, 1, 0);
+  result.r2 = V4(0, 0, cam->zFar / deltaZ, (cam->zFar * cam->zNear) / deltaZ);
   result.r3 = V4(0, 0, 1, 0);
 
   return result;
@@ -412,19 +412,19 @@ v4 BiasNormal(v4 normal)
 
 vertex GetPointInScreenRow(vertex_line line, float y)
 {
-  float t = (y - line.origin.scr.y) / line.dir.scr.y;
+  float t = (y - line.origin.pos.y) / line.dir.pos.y;
   vertex result;
-  result.scr = line.origin.scr + (t * line.dir.scr);
+  result.pos = line.origin.pos + (t * line.dir.pos);
   result.uv = line.origin.uv + (t * line.dir.uv);
   return result;
 }
 vertex ShilfPointToNextCol(vertex origin, vertex dir)
 {
   //TODO: shift it!
-  float newX = Ceil(origin.scr.x);
-  float t = (newX - origin.scr.x) / dir.scr.x;
+  float newX = Ceil(origin.pos.x);
+  float t = (newX - origin.pos.x) / dir.pos.x;
   vertex result = origin;
-  result.scr.x = newX;
+  result.pos.x = newX;
   result.uv = origin.uv + (t * dir.uv);
   return result;
 }
@@ -460,11 +460,11 @@ void FillFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* c
 
     vertex startVertInCol = ShilfPointToNextCol(startVert, endVert - startVert);
 
-    __m128 startX_x4 = _mm_set_ps1(startVertInCol.scr.x);
-    __m128 endX_x4 = _mm_set_ps1(endVert.scr.x);
+    __m128 startX_x4 = _mm_set_ps1(startVertInCol.pos.x);
+    __m128 endX_x4 = _mm_set_ps1(endVert.pos.x);
 
-    __m128 startZ_x4 = _mm_set_ps1(startVertInCol.scr.z);
-    __m128 endZ_x4 = _mm_set_ps1(endVert.scr.z);
+    __m128 startZ_x4 = _mm_set_ps1(startVertInCol.pos.z);
+    __m128 endZ_x4 = _mm_set_ps1(endVert.pos.z);
 
     __m128 uvStartXX_x4 = _mm_set_ps1(startVertInCol.uv.x);
     __m128 uvStartXY_x4 = _mm_set_ps1(startVertInCol.uv.y);
@@ -472,8 +472,8 @@ void FillFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* c
     __m128 uvEndXX_x4 = _mm_set_ps1(endVert.uv.x);
     __m128 uvEndXY_x4 = _mm_set_ps1(endVert.uv.y);
 
-    float cStartX = startVertInCol.scr.x;
-    float cEndX = Clamp(endVert.scr.x, 0.0f, scrMax.x);
+    float cStartX = Clamp(startVertInCol.pos.x, 0.0f, scrMax.x);
+    float cEndX = Clamp(endVert.pos.x, 0.0f, scrMax.x);
 
     __m128 cEndX_x4 = _mm_set1_ps(cEndX);
     for (float x = cStartX; x < cEndX; x += 4)
@@ -686,10 +686,10 @@ void DrawFlatQuadTex(platform_work_queue* queue, loaded_bitmap* drawBuffer, load
   lineR.origin = bound.p2;
   lineR.dir = bound.p3 - bound.p2;
 
-  float minY = Max(bound.p0.scr.y, 0.0f);
-  float maxY = Min(bound.p1.scr.y, scrSize.y);
+  float minY = Max(bound.p0.pos.y, 0.0f);
+  float maxY = Min(bound.p1.pos.y, scrSize.y);
 
-  const i32 partCount = 4;
+  const i32 partCount = 8;
   float stepY = (maxY - minY) * (1.0f / (float)partCount);
   fill_flat_quad_work workArr[partCount];
   for (i32 i = 0; i < partCount; ++i)
@@ -713,7 +713,7 @@ void DrawTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera*
   {
     for (i32 j = i + 1; j < count; ++j)
     {
-      if (tri.p[i].scr.y > tri.p[j].scr.y)
+      if (tri.p[i].pos.y > tri.p[j].pos.y)
       {
         Swap(&tri.p[i], &tri.p[j]);
       }
@@ -723,15 +723,16 @@ void DrawTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera*
   for (i32 i = 0; i < count; ++i)
   {
     //NOTE: perspective divide
-    tri.p[i].scr.xy = NDCPointToScreen(cam, tri.p[i].scr);
-    float zInv = 1.0f / tri.p[i].scr.z;
+    tri.p[i].pos.xy = NDCPointToScreen(cam, tri.p[i].pos);
+    float zInv = 1.0f / tri.p[i].pos.z;
     tri.p[i].uv *= zInv;
-    tri.p[i].scr.z = zInv;
+    tri.p[i].pos.z = zInv;
   }
 
-  float tScr = (tri.p[1].scr.y - tri.p[0].scr.y) / (tri.p[2].scr.y - tri.p[0].scr.y);
+  float tScr = (tri.p[1].pos.y - tri.p[0].pos.y) / (tri.p[2].pos.y - tri.p[0].pos.y);
+  if (isnan(tScr)) return;
 
-  v3 scrMiddle = Lerp(tri.p[0].scr, tri.p[2].scr, tScr);
+  v3 scrMiddle = Lerp(tri.p[0].pos, tri.p[2].pos, tScr);
   v2 uvMiddle = Lerp(tri.p[0].uv, tri.p[2].uv, tScr);
 
   v3 scrMiddleL;
@@ -740,17 +741,17 @@ void DrawTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera*
   v3 scrMiddleR;
   v2 uvMiddleR;
 
-  if (scrMiddle.x < tri.p[1].scr.x)
+  if (scrMiddle.x < tri.p[1].pos.x)
   {
     scrMiddleL = scrMiddle;
-    scrMiddleR = tri.p[1].scr;
+    scrMiddleR = tri.p[1].pos;
 
     uvMiddleL = uvMiddle;
     uvMiddleR = tri.p[1].uv;
   }
   else
   {
-    scrMiddleL = tri.p[1].scr;
+    scrMiddleL = tri.p[1].pos;
     scrMiddleR = scrMiddle;
 
     uvMiddleL = tri.p[1].uv;
@@ -778,9 +779,9 @@ void ProcessTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, came
   for (int i = 0; i < ARRAY_COUNT(tri.p); ++i)
   {
     //TODO: zClipping
-    if (tri.p[i].scr.z < 0.0f) return;
+    if (tri.p[i].pos.z < 0.0f) return;
 
-    tri.p[i].scr = CameraPointToNDC(cam, tri.p[i].scr);
+    tri.p[i].pos = CameraPointToNDC(cam, tri.p[i].pos);
   }
   DrawTriangle(queue, drawBuffer, cam, light, tri, faceNormal, color, texture);
   DrawTriangle(queue, drawBuffer, cam, light, tri, faceNormal, color, texture);
@@ -791,7 +792,7 @@ void Draw(platform_work_queue* queue, loaded_bitmap* drawBuffer, directional_lig
   for (int i = 0; i < verCount; ++i)
   {
     //NOTE: vertex shader
-    ver[i].scr = WorldPointToCamera(cam, ver[i].scr);
+    ver[i].pos = WorldPointToCamera(cam, ver[i].pos);
   }
 
   for (int i = 0; i < indexCount; i += 3)
@@ -801,10 +802,10 @@ void Draw(platform_work_queue* queue, loaded_bitmap* drawBuffer, directional_lig
     tri.p1 = ver[index[i + 1]];
     tri.p2 = ver[index[i + 2]];
 
-    v3 normal = Cross(tri.p1.scr - tri.p0.scr, tri.p2.scr - tri.p0.scr);
+    v3 normal = Cross(tri.p1.pos - tri.p0.pos, tri.p2.pos - tri.p0.pos);
 
     //NOTE: backface culling
-    if (Dot(tri.p0.scr, normal) > 0.0f)
+    if (Dot(tri.p0.pos, normal) > 0.0f)
     {
       ProcessTriangle(queue, drawBuffer, cam, light, tri, faceNormals[i / 3], texture, color);
     }
@@ -1066,9 +1067,9 @@ static void RenderGroupOutput(platform_work_queue* queue, render_group* renderGr
 
       } break;
 
-      case RENDER_TYPE_render_entry_coordinate_system:
+      case RENDER_TYPE_render_entry_mesh:
       {
-        render_entry_coordinate_system* entry = (render_entry_coordinate_system*)((u8*)renderGroup->pushBuffer.base + index);
+        render_entry_mesh* entry = (render_entry_mesh*)((u8*)renderGroup->pushBuffer.base + index);
         index += sizeof(*entry);
 
         Draw(queue, drawBuffer, entry->light, renderGroup->cam, entry->ver, entry->verCount, entry->index, entry->indexCount, entry->faceNormals, entry->bitmap, entry->col);
@@ -1168,9 +1169,9 @@ inline render_entry_rectangle_outline* PushRectOutline(render_group* renderGroup
   return entry;
 }
 
-inline render_entry_coordinate_system* CoordinateSystem(render_group* renderGroup, directional_light light, vertex* ver, i32 verCount, i32* index, i32 indexCount, v3* faceNormals, v4 col, loaded_bitmap* bitmap)
+inline render_entry_mesh* RenderMesh(render_group* renderGroup, directional_light light, vertex* ver, i32 verCount, i32* index, i32 indexCount, v3* faceNormals, v4 col, loaded_bitmap* bitmap)
 {
-  render_entry_coordinate_system* entry = PUSH_RENDER_ELEMENT(renderGroup, render_entry_coordinate_system);
+  render_entry_mesh* entry = PUSH_RENDER_ELEMENT(renderGroup, render_entry_mesh);
   if (entry)
   {
     entry->ver = ver;

@@ -31,14 +31,14 @@ struct environment_map
 
 struct vertex
 {
-  v3 scr;
+  v3 pos;
   v2 uv;
 };
 
 inline vertex operator-(vertex a, vertex b)
 {
   vertex result;
-  result.scr = a.scr - b.scr;
+  result.pos = a.pos - b.pos;
   result.uv = a.uv - b.uv;
   return result;
 }
@@ -82,8 +82,8 @@ enum render_entry_type
   RENDER_TYPE_render_entry_bitmap,
   RENDER_TYPE_render_entry_rectangle,
   RENDER_TYPE_render_entry_rectangle_outline,
-  RENDER_TYPE_render_entry_coordinate_system,
   RENDER_TYPE_render_entry_saturation,
+  RENDER_TYPE_render_entry_mesh,
 };
 
 struct render_entry_header
@@ -102,7 +102,7 @@ struct render_entry_saturation
 };
 
 //NOTE: for testing purpose only
-struct render_entry_coordinate_system
+struct render_entry_mesh
 {
   vertex* ver;
   i32 verCount;

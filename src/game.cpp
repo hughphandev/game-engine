@@ -593,15 +593,15 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
 
   vertex ver[8];
-  ver[0].scr = { 0.0f, 0.0f, 0.0f };
-  ver[1].scr = { 1.0f, 0.0f, 0.0f };
-  ver[2].scr = { 1.0f, 1.0f, 0.0f };
-  ver[3].scr = { 0.0f, 1.0f, 0.0f };
+  ver[0].pos = { 0.0f, 0.0f, 0.0f };
+  ver[1].pos = { 1.0f, 0.0f, 0.0f };
+  ver[2].pos = { 1.0f, 1.0f, 0.0f };
+  ver[3].pos = { 0.0f, 1.0f, 0.0f };
 
-  ver[4].scr = { 0.0f, 0.0f, 1.0f };
-  ver[5].scr = { 1.0f, 0.0f, 1.0f };
-  ver[6].scr = { 1.0f, 1.0f, 1.0f };
-  ver[7].scr = { 0.0f, 1.0f, 1.0f };
+  ver[4].pos = { 0.0f, 0.0f, 1.0f };
+  ver[5].pos = { 1.0f, 0.0f, 1.0f };
+  ver[6].pos = { 1.0f, 1.0f, 1.0f };
+  ver[7].pos = { 0.0f, 1.0f, 1.0f };
 
   ver[0].uv = { 0.0f, 0.0f };
   ver[1].uv = { 1.0f, 0.0f };
@@ -616,18 +616,15 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   i32 index[] = {
     0, 1, 2,
     0, 2, 3,
-  };
-  i32 index2[] = {
-    4, 5, 6,
-    4, 6, 7,
+    4, 6, 5,
+    4, 7, 6,
+
+    0, 4, 5,
   };
 
-  v3 fNormal1[] = {
+  v3 fNormal[] = {
     {0.0f, 1.0f, 0.0f},
     {0.0f, 1.0f, 0.0f},
-  };
-
-  v3 fNormal2[] = {
     {0.0f, 1.0f, 0.0f},
     {0.0f, 1.0f, 0.0f},
   };
@@ -635,13 +632,10 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
   v4 col = V4(1.0f, 1.0f, 1.0f, 1.0f);
   directional_light light = {};
-  light.dir = {0.0f, 1.0f, 0.0f};
-  light.diffuse = {1.0f, 1.0f, 1.0f};
+  light.dir = { 0.0f, -1.0f, 0.0f };
+  light.diffuse = { 1.0f, 1.0f, 1.0f };
   light.ambient = 0.1f * light.diffuse;
-  CoordinateSystem(renderGroup, light, ver, ARRAY_COUNT(ver), index, ARRAY_COUNT(index), fNormal1, col, &gameState->bricks);
-
-  col = V4(0.0f, 0.0f, 0.0f, 0.0f);
-  CoordinateSystem(renderGroup, light, ver, ARRAY_COUNT(ver), index2, ARRAY_COUNT(index2), fNormal2, col, &gameState->bricks);
+  RenderMesh(renderGroup, light, ver, ARRAY_COUNT(ver), index, ARRAY_COUNT(index), fNormal, col, &gameState->bricks);
 
   gameState->time += input.dt;
 
