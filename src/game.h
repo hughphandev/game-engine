@@ -144,6 +144,16 @@ enum program_mode
   MODE_MENU
 };
 
+struct loaded_obj
+{
+  v3* vertexPos;
+  v3* vertexNormal;
+  v2* textureCoord;
+
+  u32* faceInfo;
+  u32 vertexCount;
+};
+
 struct game_state
 {
   memory_arena arena;
@@ -171,6 +181,8 @@ struct game_state
 
   loaded_bitmap testDiffuse;
   loaded_bitmap testNormal;
+
+  loaded_obj skull;
 
   float time;
 };
@@ -245,7 +257,6 @@ struct wav_fmt
   char subFormat[16];
 };
 #pragma pack(pop)
-
 
 
 struct game_memory

@@ -145,6 +145,33 @@ inline loaded_sound DEBUGLoadWAV(game_state* gameState, game_memory* mem, char* 
   return result;
 };
 
+inline loaded_obj DEBUGLoadObj(game_state* gameState, game_memory* mem, char* fileName)
+{
+  loaded_obj result = {};
+
+  debug_read_file_result file = mem->DEBUGPlatformReadFile(fileName);
+  if (file.contentSize > 0)
+  {
+    char* c = (char*)file.contents;
+    for (u32 i = 0; i < file.contentSize; ++i)
+    {
+      if (c[i] == 'v' && c[i + 1] == ' ')
+      {
+        v3 vertexPos;
+        u32 vertexIndex = 0;
+        char* end = &c[i + 1];
+        while (*end != '\n')
+        {
+          float value = strtof(end, &end);
+          vertexPos.e[vertexIndex++] = value;
+        }
+        ASSERT(0);
+      }
+    }
+  }
+  return result;
+}
+
 inline loaded_bitmap DEBUGLoadBMP(game_state* gameState, game_memory* mem, char* fileName)
 {
   loaded_bitmap result = {};
@@ -439,7 +466,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     gameState->cam.size = V2(buffer->width, buffer->height);
     gameState->cam.rFov = 0.5f * PI;
     gameState->cam.zNear = 0.5;
-    gameState->cam.zFar = 20;
+    gameState->cam.zFar = 100;
     gameState->cam.pos = V3(0, 0, -2);
     gameState->cam.rot = {};
 
@@ -463,6 +490,8 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     gameState->wall = DEBUGLoadBMP(gameState, memory, "wall_side_left.bmp");
     gameState->knight = DEBUGLoadBMP(gameState, memory, "knight_idle_anim_f0.bmp");
+
+    gameState->skull = DEBUGLoadObj(gameState, memory, "Skull3D.OBJ");
 
     gameState->bricks = DEBUGLoadBMP(gameState, memory, "bricks.bmp");
     gameState->bricksNormal = MakeEmptyBitmap(&gameState->arena, gameState->bricks.width, gameState->bricks.height, false);
@@ -613,10 +642,10 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     3, 2, 6, 6, 7, 3,
   };
 
-  for (i32 i = 0; i < ARRAY_COUNT(ver); ++i)
-  {
-    ver[i].pos = Rotate(ver[i].pos, V3(gameState->time, -gameState->time, 0.0f));
-  }
+  // for (i32 i = 0; i < ARRAY_COUNT(ver); ++i)
+  // {
+  //   ver[i].pos = Rotate(ver[i].pos, V3(gameState->time, -gameState->time, 0.0f));
+  // }
 
   v4 col = V4(1.0f, 1.0f, 1.0f, 1.0f);
   directional_light light = {};

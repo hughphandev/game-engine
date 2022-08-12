@@ -1,6 +1,10 @@
 #include "jusa_render.h"
 #include "jusa_math.cpp"
 
+//TODO: remove
+#include "windows.h"
+#include "stdio.h"
+
 v4 SRGB1ToLinear1(v4 col)
 {
   //TODO: Current gamma is 2
@@ -333,16 +337,23 @@ mat4 GetScaleMatrix(v3 scale)
   return result;
 }
 
-mat4 GetLookAtMatrix(v3 pos, v3 target, v3 up)
+mat4 GetLookAtMatrix(v3 pos, v3 target, v3 up = V3(0, 1, 0))
 {
-  v3 camFront = Normalize(target - pos);
-  v3 camRight = Normalize(Cross(up, camFront));
-  v3 camUp = Normalize(Cross(camFront, camRight));
+  v3 dir = Normalize(target - pos);
+
+  v3 camZ = dir;
+  v3 camX = Normalize(Cross(up, camZ));
+  v3 camY = Normalize(Cross(camZ, camX));
+
+  char buf[256];
+  _snprintf_s(buf, sizeof(buf), "dir=%f, %f, %f", dir.x, dir.y, dir.z);
+  OutputDebugStringA(buf);
+
 
   mat4 result = {};
-  result.r0 = V4(camRight.x, camRight.y, camRight.z, 0);
-  result.r1 = V4(camUp.x, camUp.y, camUp.z, 0);
-  result.r2 = V4(camFront.x, camFront.y, camFront.z, 0);
+  result.r0 = V4(camX.x, camX.y, camX.z, -Dot(camX, pos));
+  result.r1 = V4(camY.x, camY.y, camY.z, -Dot(camY, pos));
+  result.r2 = V4(camZ.x, camZ.y, camZ.z, -Dot(camZ, pos));
   result.r3 = V4(0, 0, 0, 1);
 
   return result;
@@ -840,6 +851,10 @@ void Draw(platform_work_queue* queue, loaded_bitmap* drawBuffer, directional_lig
   {
     //NOTE: vertex shader
     ver[i].pos = WorldPointToCamera(cam, ver[i].pos);
+
+    // char buf[256];
+    // _snprintf_s(buf, sizeof(buf), "vertex%i: pos=%f, %f, %f", i, ver[i].pos.x, ver[i].pos.y, ver[i].pos.z);
+    // OutputDebugStringA(buf);
   }
 
   for (int i = 0; i < indexCount; i += 3)

@@ -101,7 +101,6 @@ struct render_entry_saturation
   float level;
 };
 
-//NOTE: for testing purpose only
 struct render_entry_mesh
 {
   vertex* ver;

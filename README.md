@@ -14,11 +14,8 @@ An experimental game engine for educational purposes!
 - Multi-Threading: Basic work queue
 - Lighting: Basic directional lighting
 
-## In Progress
-
-- Optimize renderer
-
 ## Features TODO
+- Obj File loading
 - Font Rendering
 - 3D AABB collision detection
 - Hardware Acceleration
