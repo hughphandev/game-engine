@@ -115,6 +115,7 @@ union v3
   inline bool operator>(float a);
 };
 
+
 inline v3 Round(v3 value);
 inline v3 Cross(v3 a, v3 b);
 inline float Dot(v3 a, v3 b);
@@ -210,6 +211,32 @@ inline v4 Normalize(v4 v);
 inline float Length(v4 v);
 
 inline v4 Lerp(v4 a, v4 b, float t);
+
+union v2i
+{
+  struct
+  {
+    int x, y;
+  };
+  int e[2];
+};
+
+union v3i
+{
+  struct
+  {
+    union
+    {
+      v2i xy;
+      struct
+      {
+        int x, y;
+      };
+    };
+    int z;
+  };
+  int e[3];
+};
 
 union mat4
 {

@@ -145,27 +145,119 @@ inline loaded_sound DEBUGLoadWAV(game_state* gameState, game_memory* mem, char* 
   return result;
 };
 
-inline loaded_obj DEBUGLoadObj(game_state* gameState, game_memory* mem, char* fileName)
+inline loaded_model DEBUGLoadObj(game_state* gameState, game_memory* mem, char* fileName)
 {
-  loaded_obj result = {};
+  loaded_model result = {};
 
   debug_read_file_result file = mem->DEBUGPlatformReadFile(fileName);
   if (file.contentSize > 0)
   {
-    char* c = (char*)file.contents;
-    for (u32 i = 0; i < file.contentSize; ++i)
+    char* fileEnd = (char*)file.contents + file.contentSize;
+    for (char* c = (char*)file.contents; c < fileEnd; ++c)
     {
-      if (c[i] == 'v' && c[i + 1] == ' ')
+      if (c[0] == 'v' && c[1] == ' ' && (c - 1 < file.contents || *(c - 1) == '\n'))
       {
-        v3 vertexPos;
-        u32 vertexIndex = 0;
-        char* end = &c[i + 1];
-        while (*end != '\n')
+        result.vCount++;
+      }
+      if (c[0] == 'v' && c[1] == 't' && c[2] == ' ' && (c - 1 < file.contents || *(c - 1) == '\n'))
+      {
+        result.vtCount++;
+      }
+      if (c[0] == 'v' && c[1] == 'n' && c[2] == ' ' && (c - 1 < file.contents || *(c - 1) == '\n'))
+      {
+        result.vnCount++;
+      }
+      result.iInVert = (result.vCount > 0 ? 1 : 0) + (result.vtCount > 0 ? 1 : 0) + (result.vnCount > 0 ? 1 : 0);
+      if (c[0] == 'f' && c[1] == ' ' && (c - 1 < file.contents || *(c - 1) == '\n'))
+      {
+        u32 count = 0;
+        u32 slashCount = 0;
+        for (; c[0] != '\n'; ++c)
         {
-          float value = strtof(end, &end);
-          vertexPos.e[vertexIndex++] = value;
+          if (c[0] == ' ') count++;
         }
-        ASSERT(0);
+        result.iCount += (count - 2) * 3 * result.iInVert;
+      }
+    }
+
+    result.v = result.vCount > 0 ? PUSH_ARRAY(&gameState->arena, v3, result.vCount) : 0;
+    result.vn = result.vnCount > 0 ? PUSH_ARRAY(&gameState->arena, v3, result.vnCount) : 0;
+    result.vt = result.vtCount > 0 ? PUSH_ARRAY(&gameState->arena, v2, result.vtCount) : 0;
+    result.indices = PUSH_ARRAY(&gameState->arena, u32, result.iCount);
+
+    u32 vIndex = 0;
+    u32 vnIndex = 0;
+    u32 vtIndex = 0;
+    u32 index = 0;
+    for (char* c = (char*)file.contents; c < fileEnd; ++c)
+    {
+      if (c[0] == 'v' && c[1] == ' ' && (c - 1 < file.contents || *(c - 1) == '\n'))
+      {
+        u32 eIndex = 0;
+        for (++c; *c != '\n';)
+        {
+          float value = strtof(c, &c);
+          result.v[vIndex].e[eIndex++] = value;
+        }
+        ++vIndex;
+      }
+      if (c[0] == 'v' && c[1] == 't' && c[2] == ' ' && (c - 1 < file.contents || *(c - 1) == '\n'))
+      {
+        u32 eIndex = 0;
+        for (c += 2; *c != '\n';)
+        {
+          float value = strtof(c, &c);
+          result.vt[vtIndex].e[eIndex++] = value;
+        }
+        ++vtIndex;
+      }
+      if (c[0] == 'v' && c[1] == 'n' && c[2] == ' ' && (c - 1 < file.contents || *(c - 1) == '\n'))
+      {
+        u32 eIndex = 0;
+        for (c += 2; *c != '\n';)
+        {
+          float value = strtof(c, &c);
+          result.vn[vnIndex].e[eIndex++] = value;
+        }
+        ++vnIndex;
+      }
+      if (c[0] == 'f' && c[1] == ' ' && (c - 1 < file.contents || *(c - 1) == '\n'))
+      {
+        //NOTE: count indices
+        u32 faceCount = 0;
+        for (char* t = c + 1; t[0] != '\n'; ++t)
+        {
+          if (t[0] == ' ') faceCount++;
+        }
+
+        //NOTE: parse indices
+        u32* temp = (u32*)malloc(result.iInVert * faceCount * sizeof(u32));
+        for (u32 fIndex = 0; fIndex < faceCount * result.iInVert; ++fIndex)
+        {
+          while (c[0] < '0' || c[0] > '9' && c[0] != '-') ++c;
+          i32 value = strtol(c, &c, 10);
+          temp[fIndex] = value - 1;
+
+          ASSERT(value > 0);
+        }
+
+        //NOTE: add to model
+        for (u32 i = 0; i < faceCount - 2; ++i)
+        {
+          for (u32 iFace = 0; iFace < result.iInVert; ++iFace)
+          {
+            result.indices[index++] = temp[i * result.iInVert + iFace];
+          }
+          for (u32 iFace = 0; iFace < result.iInVert; ++iFace)
+          {
+            result.indices[index++] = temp[(i + 1) * result.iInVert + iFace];
+          }
+          for (u32 iFace = 0; iFace < result.iInVert; ++iFace)
+          {
+            result.indices[index++] = temp[(faceCount - 1) * result.iInVert + iFace];
+          }
+        }
+        free(temp);
       }
     }
   }
@@ -467,7 +559,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     gameState->cam.rFov = 0.5f * PI;
     gameState->cam.zNear = 0.5;
     gameState->cam.zFar = 100;
-    gameState->cam.pos = V3(0, 0, -2);
+    gameState->cam.pos = V3(0, 0, -5);
     gameState->cam.rot = {};
 
     world->tileCountX = 1024;
@@ -491,7 +583,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     gameState->wall = DEBUGLoadBMP(gameState, memory, "wall_side_left.bmp");
     gameState->knight = DEBUGLoadBMP(gameState, memory, "knight_idle_anim_f0.bmp");
 
-    gameState->skull = DEBUGLoadObj(gameState, memory, "Skull3D.OBJ");
+    // gameState->cube = DEBUGLoadObj(gameState, memory, "cube.obj");
 
     gameState->bricks = DEBUGLoadBMP(gameState, memory, "bricks.bmp");
     gameState->bricksNormal = MakeEmptyBitmap(&gameState->arena, gameState->bricks.width, gameState->bricks.height, false);
@@ -652,7 +744,8 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   light.dir = { 0.0f, -1.0f, 0.0f };
   light.diffuse = { 1.0f, 1.0f, 1.0f };
   light.ambient = 0.1f * light.diffuse;
-  RenderMesh(renderGroup, light, ver, ARRAY_COUNT(ver), index, ARRAY_COUNT(index), col, &gameState->bricks);
+  loaded_model cube = DEBUGLoadObj(gameState, memory, "cube.obj");
+  RenderMesh(renderGroup, light, &cube, col, &gameState->bricks);
 
   gameState->time += input.dt;
 

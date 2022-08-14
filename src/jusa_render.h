@@ -69,6 +69,22 @@ union flat_quad
   };
 };
 
+struct loaded_model
+{
+  v3* v;
+  u32 vCount;
+
+  v3* vn;
+  u32 vnCount;
+
+  v2* vt;
+  u32 vtCount;
+
+  u32* indices;
+  u32 iCount;
+  u32 iInVert;
+};
+
 struct directional_light
 {
   v3 dir;
@@ -103,10 +119,7 @@ struct render_entry_saturation
 
 struct render_entry_mesh
 {
-  vertex* ver;
-  i32 verCount;
-  i32* index;
-  i32 indexCount;
+  loaded_model* model;
   directional_light light;
 
   v4 col;

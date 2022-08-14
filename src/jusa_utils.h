@@ -75,5 +75,21 @@ void ZeroSize(void* mem, size_t size)
   memset(mem, 0, size);
 }
 
+inline i32 StrToI(char* str, char** pStr)
+{
+  int sign = 1;
+  int result = 0;
+  while (*str == '-')
+  {
+    sign *= -1;
+    ++str;
+  }
+  while (*str >= '0' && *str <= '9')
+  {
+    result = result * 10 + (*str++ - '0');
+  }
+  return result * sign;
+}
+
 
 #endif
