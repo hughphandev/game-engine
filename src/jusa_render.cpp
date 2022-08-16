@@ -337,23 +337,21 @@ mat4 GetScaleMatrix(v3 scale)
   return result;
 }
 
-mat4 GetLookAtMatrix(v3 pos, v3 target, v3 up = V3(0, 1, 0))
+mat4 GetLookAtMatrix(v3 eye, v3 target, v3 up = V3(0, 1, 0))
 {
-  v3 dir = Normalize(target - pos);
-
-  v3 camZ = dir;
+  v3 camZ = Normalize(target - eye);
   v3 camX = Normalize(Cross(up, camZ));
   v3 camY = Normalize(Cross(camZ, camX));
 
   char buf[256];
-  _snprintf_s(buf, sizeof(buf), "dir=%f, %f, %f", dir.x, dir.y, dir.z);
+  _snprintf_s(buf, sizeof(buf), "up=%f, %f, %f", up.x, up.y, up.z);
   OutputDebugStringA(buf);
 
 
   mat4 result = {};
-  result.r0 = V4(camX.x, camX.y, camX.z, -Dot(camX, pos));
-  result.r1 = V4(camY.x, camY.y, camY.z, -Dot(camY, pos));
-  result.r2 = V4(camZ.x, camZ.y, camZ.z, -Dot(camZ, pos));
+  result.r0 = V4(camX.x, camX.y, camX.z, -Dot(camX, eye));
+  result.r1 = V4(camY.x, camY.y, camY.z, -Dot(camY, eye));
+  result.r2 = V4(camZ.x, camZ.y, camZ.z, -Dot(camZ, eye));
   result.r3 = V4(0, 0, 0, 1);
 
   return result;
@@ -837,9 +835,9 @@ void ProcessTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, came
 void Draw(platform_work_queue* queue, loaded_bitmap* drawBuffer, directional_light light, camera* cam, loaded_model* model, loaded_bitmap* texture, v4 color)
 {
   u32* indices = model->indices;
-  v2* uv = model->vt;
-  v3* pos = model->v;
-  v3* nor = model->vn;
+  v2* uv = model->texCoords;
+  v3* pos = model->positions;
+  v3* nor = model->normals;
 
   u32 iCount = model->iCount;
   u32 iInVert = model->iInVert;
@@ -872,7 +870,7 @@ void Draw(platform_work_queue* queue, loaded_bitmap* drawBuffer, directional_lig
     }
   }
 
-  for (u32 i = 0; i < model->vCount; ++i)
+  for (u32 i = 0; i < model->posCount; ++i)
   {
     //NOTE: vertex shader
     pos[i] = WorldPointToCamera(cam, pos[i]);
@@ -908,6 +906,7 @@ void Draw(platform_work_queue* queue, loaded_bitmap* drawBuffer, directional_lig
     }
 
     //NOTE: backface culling
+    //NOTE: cam dir in camera space is V3(0, 0, 1);
     if (Dot(V3(0, 0, 1), normal) > 0.0f)
     {
       ProcessTriangle(queue, drawBuffer, cam, light, tri, faceNormals[i / 3], texture, color);
@@ -1171,9 +1170,9 @@ static void RenderGroupOutput(platform_work_queue* queue, render_group* renderGr
         ClearBuffer(drawBuffer, entry->color.ToU32());
       } break;
 
-      case RENDER_TYPE_render_entry_mesh:
+      case RENDER_TYPE_render_entry_model:
       {
-        render_entry_mesh* entry = (render_entry_mesh*)((u8*)renderGroup->pushBuffer.base + index);
+        render_entry_model* entry = (render_entry_model*)((u8*)renderGroup->pushBuffer.base + index);
         index += sizeof(*entry);
 
         Draw(queue, drawBuffer, entry->light, renderGroup->cam, entry->model, entry->bitmap, entry->col);
@@ -1273,9 +1272,9 @@ inline render_entry_rectangle_outline* PushRectOutline(render_group* renderGroup
   return entry;
 }
 
-inline render_entry_mesh* RenderMesh(render_group* renderGroup, directional_light light, loaded_model* model, v4 col, loaded_bitmap* bitmap)
+inline render_entry_model* RenderModel(render_group* renderGroup, directional_light light, loaded_model* model, v4 col, loaded_bitmap* bitmap)
 {
-  render_entry_mesh* entry = PUSH_RENDER_ELEMENT(renderGroup, render_entry_mesh);
+  render_entry_model* entry = PUSH_RENDER_ELEMENT(renderGroup, render_entry_model);
   if (entry)
   {
     entry->model = model;

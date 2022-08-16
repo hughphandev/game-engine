@@ -23,6 +23,43 @@ struct loaded_bitmap
   int height;
 };
 
+struct loaded_material
+{
+  char* name;
+  v3 ambient;
+  v3 diffuse;
+  v3 specular;
+  v3 emissive;
+  float specularExponent;
+  float dissolved;
+  float opticalDensity;
+  i32 illumModels;
+};
+
+struct loaded_mtl
+{
+  loaded_material* materials;
+  size_t matCount;
+};
+
+struct loaded_model
+{
+  v3* positions;
+  u32 posCount;
+
+  v3* normals;
+  u32 norCount;
+
+  v2* texCoords;
+  u32 texCount;
+
+  u32* indices;
+  u32 iCount;
+  u32 iInVert;
+
+  loaded_mtl mtl;
+};
+
 struct environment_map
 {
   loaded_bitmap LOD[4];
@@ -69,21 +106,6 @@ union flat_quad
   };
 };
 
-struct loaded_model
-{
-  v3* v;
-  u32 vCount;
-
-  v3* vn;
-  u32 vnCount;
-
-  v2* vt;
-  u32 vtCount;
-
-  u32* indices;
-  u32 iCount;
-  u32 iInVert;
-};
 
 struct directional_light
 {
@@ -99,7 +121,7 @@ enum render_entry_type
   RENDER_TYPE_render_entry_rectangle,
   RENDER_TYPE_render_entry_rectangle_outline,
   RENDER_TYPE_render_entry_saturation,
-  RENDER_TYPE_render_entry_mesh,
+  RENDER_TYPE_render_entry_model,
 };
 
 struct render_entry_header
@@ -117,7 +139,7 @@ struct render_entry_saturation
   float level;
 };
 
-struct render_entry_mesh
+struct render_entry_model
 {
   loaded_model* model;
   directional_light light;

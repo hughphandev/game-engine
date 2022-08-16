@@ -143,7 +143,129 @@ inline loaded_sound DEBUGLoadWAV(game_state* gameState, game_memory* mem, char* 
     result.channelsCount = nChannels;
   }
   return result;
-};
+}
+
+inline char* ReadUntil(memory_arena* arena, char* input, char terminator)
+{
+  char* end = input;
+  for (; *end != terminator; ++end);
+  size_t count = end - input;
+  char* result = PUSH_ARRAY(arena, char, count + 1);
+  Memcpy(result, input, count);
+  result[count] = '\0';
+  return result;
+}
+
+inline size_t CountSubString(char* input, char* subString)
+{
+  size_t result = 0;
+  size_t strLen = strlen(subString);
+  for (char* c = input; *c != '\0'; ++c)
+  {
+    if (strncmp(c, subString, strLen) == 0)
+    {
+      ++result;
+      c += strLen - 1;
+    }
+  }
+  return result;
+}
+
+inline char* Skip(char* c, char skip)
+{
+  while (*c == skip) ++c;
+  return c;
+}
+inline char* SkipUntil(char* c, char until)
+{
+  while (*c != until) ++c;
+  return c;
+}
+
+#define MTL_NEW "newmtl"
+#define MTL_NS "Ns"
+#define MTL_KA "Ka"
+#define MTL_KD "Kd"
+#define MTL_KE "Ke"
+#define MTL_KS "Ks"
+#define MTL_NI "Ni"
+#define MTL_D "d"
+#define MTL_ILLUM "illum"
+
+inline loaded_mtl DEBUGLoadMTL(game_state* gameState, game_memory* mem, char* fileName)
+{
+  loaded_mtl result = {};
+  //TODO: load mtl file
+  debug_read_file_result file = mem->DEBUGPlatformReadFile(fileName);
+  if (file.contentSize > 0)
+  {
+    char* fileEnd = (char*)file.contents + file.contentSize;
+    result.matCount = CountSubString((char*)file.contents, MTL_NEW);
+    result.materials = (loaded_material*)PUSH_ARRAY(&gameState->arena, loaded_material, result.matCount);
+    u32 matIndex = 0;
+    loaded_material* mat = NULL;
+    for (char* c = (char*)file.contents; c < fileEnd; ++c)
+    {
+      if (*c == '#') c = SkipUntil(c, '\n');
+      if (strncmp(c, MTL_NEW, strlen(MTL_NEW)) == 0)
+      {
+        mat = &result.materials[matIndex++];
+        c += strlen(MTL_NEW);
+        mat->name = ReadUntil(&gameState->arena, c, '\n');
+      }
+      if (strncmp(c, MTL_NS, strlen(MTL_NS)) == 0)
+      {
+        c += strlen(MTL_NS);
+        mat->specularExponent = strtof(c, &c);
+      }
+      if (strncmp(c, MTL_KA, strlen(MTL_KA)) == 0)
+      {
+        c += strlen(MTL_KA);
+        mat->ambient.x = strtof(c, &c);
+        mat->ambient.y = strtof(c, &c);
+        mat->ambient.z = strtof(c, &c);
+      }
+      if (strncmp(c, MTL_KD, strlen(MTL_KD)) == 0)
+      {
+        c += strlen(MTL_KD);
+        mat->diffuse.x = strtof(c, &c);
+        mat->diffuse.y = strtof(c, &c);
+        mat->diffuse.z = strtof(c, &c);
+      }
+      if (strncmp(c, MTL_KS, strlen(MTL_KS)) == 0)
+      {
+        c += strlen(MTL_KS);
+        mat->specular.x = strtof(c, &c);
+        mat->specular.y = strtof(c, &c);
+        mat->specular.z = strtof(c, &c);
+      }
+      if (strncmp(c, MTL_KE, strlen(MTL_KE)) == 0)
+      {
+        c += strlen(MTL_KE);
+        mat->emissive.x = strtof(c, &c);
+        mat->emissive.y = strtof(c, &c);
+        mat->emissive.z = strtof(c, &c);
+      }
+      if (strncmp(c, MTL_NI, strlen(MTL_NI)) == 0)
+      {
+        c += strlen(MTL_NI);
+        mat->opticalDensity = strtof(c, &c);
+      }
+      if (strncmp(c, MTL_D, strlen(MTL_D)) == 0)
+      {
+        c += strlen(MTL_D);
+        mat->dissolved = strtof(c, &c);
+      }
+      if (strncmp(c, MTL_ILLUM, strlen(MTL_ILLUM)) == 0)
+      {
+        c += strlen(MTL_ILLUM);
+        mat->illumModels = strtol(c, &c, 10);
+      }
+    }
+  }
+  ASSERT(0);
+  return result;
+}
 
 inline loaded_model DEBUGLoadObj(game_state* gameState, game_memory* mem, char* fileName)
 {
@@ -157,17 +279,17 @@ inline loaded_model DEBUGLoadObj(game_state* gameState, game_memory* mem, char* 
     {
       if (c[0] == 'v' && c[1] == ' ' && (c - 1 < file.contents || *(c - 1) == '\n'))
       {
-        result.vCount++;
+        result.posCount++;
       }
       if (c[0] == 'v' && c[1] == 't' && c[2] == ' ' && (c - 1 < file.contents || *(c - 1) == '\n'))
       {
-        result.vtCount++;
+        result.texCount++;
       }
       if (c[0] == 'v' && c[1] == 'n' && c[2] == ' ' && (c - 1 < file.contents || *(c - 1) == '\n'))
       {
-        result.vnCount++;
+        result.norCount++;
       }
-      result.iInVert = (result.vCount > 0 ? 1 : 0) + (result.vtCount > 0 ? 1 : 0) + (result.vnCount > 0 ? 1 : 0);
+      result.iInVert = (result.posCount > 0 ? 1 : 0) + (result.texCount > 0 ? 1 : 0) + (result.norCount > 0 ? 1 : 0);
       if (c[0] == 'f' && c[1] == ' ' && (c - 1 < file.contents || *(c - 1) == '\n'))
       {
         u32 count = 0;
@@ -180,9 +302,9 @@ inline loaded_model DEBUGLoadObj(game_state* gameState, game_memory* mem, char* 
       }
     }
 
-    result.v = result.vCount > 0 ? PUSH_ARRAY(&gameState->arena, v3, result.vCount) : 0;
-    result.vn = result.vnCount > 0 ? PUSH_ARRAY(&gameState->arena, v3, result.vnCount) : 0;
-    result.vt = result.vtCount > 0 ? PUSH_ARRAY(&gameState->arena, v2, result.vtCount) : 0;
+    result.positions = result.posCount > 0 ? PUSH_ARRAY(&gameState->arena, v3, result.posCount) : 0;
+    result.normals = result.norCount > 0 ? PUSH_ARRAY(&gameState->arena, v3, result.norCount) : 0;
+    result.texCoords = result.texCount > 0 ? PUSH_ARRAY(&gameState->arena, v2, result.texCount) : 0;
     result.indices = PUSH_ARRAY(&gameState->arena, u32, result.iCount);
 
     u32 vIndex = 0;
@@ -197,7 +319,7 @@ inline loaded_model DEBUGLoadObj(game_state* gameState, game_memory* mem, char* 
         for (++c; *c != '\n';)
         {
           float value = strtof(c, &c);
-          result.v[vIndex].e[eIndex++] = value;
+          result.positions[vIndex].e[eIndex++] = value;
         }
         ++vIndex;
       }
@@ -207,7 +329,7 @@ inline loaded_model DEBUGLoadObj(game_state* gameState, game_memory* mem, char* 
         for (c += 2; *c != '\n';)
         {
           float value = strtof(c, &c);
-          result.vt[vtIndex].e[eIndex++] = value;
+          result.texCoords[vtIndex].e[eIndex++] = value;
         }
         ++vtIndex;
       }
@@ -217,7 +339,7 @@ inline loaded_model DEBUGLoadObj(game_state* gameState, game_memory* mem, char* 
         for (c += 2; *c != '\n';)
         {
           float value = strtof(c, &c);
-          result.vn[vnIndex].e[eIndex++] = value;
+          result.normals[vnIndex].e[eIndex++] = value;
         }
         ++vnIndex;
       }
@@ -259,10 +381,20 @@ inline loaded_model DEBUGLoadObj(game_state* gameState, game_memory* mem, char* 
         }
         free(temp);
       }
+      const char* mtlPrefix = "mtllib";
+      if (strncmp(c, mtlPrefix, strlen(mtlPrefix)) == 0)
+      {
+        c += strlen(mtlPrefix);
+
+        char mtlFile[64];
+        sscanf_s(c, "%s", mtlFile, (unsigned int)sizeof(mtlFile));
+        result.mtl = DEBUGLoadMTL(gameState, mem, mtlFile);
+      }
     }
   }
   return result;
 }
+
 
 inline loaded_bitmap DEBUGLoadBMP(game_state* gameState, game_memory* mem, char* fileName)
 {
@@ -745,7 +877,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   light.diffuse = { 1.0f, 1.0f, 1.0f };
   light.ambient = 0.1f * light.diffuse;
   loaded_model cube = DEBUGLoadObj(gameState, memory, "cube.obj");
-  RenderMesh(renderGroup, light, &cube, col, &gameState->bricks);
+  RenderModel(renderGroup, light, &cube, col, &gameState->bricks);
 
   gameState->time += input.dt;
 
