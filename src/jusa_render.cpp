@@ -974,7 +974,7 @@ void Draw(platform_work_queue* queue, loaded_bitmap* drawBuffer, directional_lig
           break;
         }
       }
-      if (Dot(V3(0, 0, 1), normal) > 0.0f)
+      if (Dot(faceNormals[vertIndex / 3], cam->dir) < 0.0f)
       {
         ProcessTriangle(queue, drawBuffer, cam, light, tri, faceNormals[vertIndex / 3], &texture, color);
       }
