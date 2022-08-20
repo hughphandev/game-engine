@@ -183,6 +183,8 @@ inline char* SkipUntil(char* c, char until)
 }
 
 #define MTL_NEW "newmtl"
+#define MTL_USE "usemtl"
+#define MTL_LIB "mtllib"
 #define MTL_NS "Ns"
 #define MTL_KA "Ka"
 #define MTL_KD "Kd"
@@ -191,6 +193,15 @@ inline char* SkipUntil(char* c, char until)
 #define MTL_NI "Ni"
 #define MTL_D "d"
 #define MTL_ILLUM "illum"
+
+#define MTL_MAP_KA "map_Ka"
+#define MTL_MAP_KD "map_Kd"
+#define MTL_MAP_KS "map_Ks"
+#define MTL_MAP_NS "map_Ns"
+#define MTL_MAP_D "map_d"
+#define MTL_MAP_BUMP "bump"
+#define MTL_MAP_DISP "disp"
+#define MTL_MAP_DECAL "decal"
 
 inline loaded_mtl DEBUGLoadMTL(game_state* gameState, game_memory* mem, char* fileName)
 {
@@ -211,6 +222,7 @@ inline loaded_mtl DEBUGLoadMTL(game_state* gameState, game_memory* mem, char* fi
       {
         mat = &result.materials[matIndex++];
         c += strlen(MTL_NEW);
+        c = Skip(c, ' ');
         mat->name = ReadUntil(&gameState->arena, c, '\n');
       }
       if (strncmp(c, MTL_NS, strlen(MTL_NS)) == 0)
@@ -261,9 +273,65 @@ inline loaded_mtl DEBUGLoadMTL(game_state* gameState, game_memory* mem, char* fi
         c += strlen(MTL_ILLUM);
         mat->illumModels = strtol(c, &c, 10);
       }
+      if (strncmp(c, MTL_MAP_BUMP, strlen(MTL_MAP_BUMP)) == 0)
+      {
+        c += strlen(MTL_MAP_BUMP);
+        char* name = ReadUntil(&gameState->arena, c, '\n');
+        mat->bumpMap = DEBUGLoadBMP(&gameState->arena, mem, name);
+        FREE_ARRAY(&gameState->arena, name, char, strlen(name) + 1);
+      }
+      if (strncmp(c, MTL_MAP_D, strlen(MTL_MAP_D)) == 0)
+      {
+        c += strlen(MTL_MAP_D);
+        char* name = ReadUntil(&gameState->arena, c, '\n');
+        mat->alphaMap = DEBUGLoadBMP(&gameState->arena, mem, name);
+        FREE_ARRAY(&gameState->arena, name, char, strlen(name) + 1);
+      }
+      if (strncmp(c, MTL_MAP_KA, strlen(MTL_MAP_KA)) == 0)
+      {
+        c += strlen(MTL_MAP_KA);
+        char* name = ReadUntil(&gameState->arena, c, '\n');
+        mat->ambientMap = DEBUGLoadBMP(&gameState->arena, mem, name);
+        FREE_ARRAY(&gameState->arena, name, char, strlen(name) + 1);
+      }
+      if (strncmp(c, MTL_MAP_KD, strlen(MTL_MAP_KD)) == 0)
+      {
+        c += strlen(MTL_MAP_KD);
+        c = Skip(c, ' ');
+        char* name = ReadUntil(&gameState->arena, c, '\n');
+        mat->diffuseMap = DEBUGLoadBMP(&gameState->arena, mem, name);
+        FREE_ARRAY(&gameState->arena, name, char, strlen(name) + 1);
+      }
+      if (strncmp(c, MTL_MAP_KS, strlen(MTL_MAP_KS)) == 0)
+      {
+        c += strlen(MTL_MAP_KS);
+        char* name = ReadUntil(&gameState->arena, c, '\n');
+        mat->specularMap = DEBUGLoadBMP(&gameState->arena, mem, name);
+        FREE_ARRAY(&gameState->arena, name, char, strlen(name)+ 1);
+      }
+      if (strncmp(c, MTL_MAP_NS, strlen(MTL_MAP_NS)) == 0)
+      {
+        c += strlen(MTL_MAP_NS);
+        char* name = ReadUntil(&gameState->arena, c, '\n');
+        mat->specularExponentMap = DEBUGLoadBMP(&gameState->arena, mem, name);
+        FREE_ARRAY(&gameState->arena, name, char, strlen(name) + 1);
+      }
+      if (strncmp(c, MTL_MAP_DECAL, strlen(MTL_MAP_DECAL)) == 0)
+      {
+        c += strlen(MTL_MAP_DECAL);
+        char* name = ReadUntil(&gameState->arena, c, '\n');
+        mat->decalMap = DEBUGLoadBMP(&gameState->arena, mem, name);
+        FREE_ARRAY(&gameState->arena, name, char, strlen(name)+1);
+      }
+      if (strncmp(c, MTL_MAP_DISP, strlen(MTL_MAP_DISP)) == 0)
+      {
+        c += strlen(MTL_MAP_DISP);
+        char* name = ReadUntil(&gameState->arena, c, '\n');
+        mat->displacementMap = DEBUGLoadBMP(&gameState->arena, mem, name);
+        FREE_ARRAY(&gameState->arena, name, char, strlen(name) + 1);
+      }
     }
   }
-  ASSERT(0);
   return result;
 }
 
@@ -277,6 +345,7 @@ inline loaded_model DEBUGLoadObj(game_state* gameState, game_memory* mem, char* 
     char* fileEnd = (char*)file.contents + file.contentSize;
     for (char* c = (char*)file.contents; c < fileEnd; ++c)
     {
+      if (*c == '#') c = SkipUntil(c, '\n');
       if (c[0] == 'v' && c[1] == ' ' && (c - 1 < file.contents || *(c - 1) == '\n'))
       {
         result.posCount++;
@@ -284,6 +353,10 @@ inline loaded_model DEBUGLoadObj(game_state* gameState, game_memory* mem, char* 
       if (c[0] == 'v' && c[1] == 't' && c[2] == ' ' && (c - 1 < file.contents || *(c - 1) == '\n'))
       {
         result.texCount++;
+      }
+      if (c[0] == 'v' && c[1] == 'n' && c[2] == ' ' && (c - 1 < file.contents || *(c - 1) == '\n'))
+      {
+        result.norCount++;
       }
       if (c[0] == 'v' && c[1] == 'n' && c[2] == ' ' && (c - 1 < file.contents || *(c - 1) == '\n'))
       {
@@ -298,22 +371,35 @@ inline loaded_model DEBUGLoadObj(game_state* gameState, game_memory* mem, char* 
         {
           if (c[0] == ' ') count++;
         }
-        result.iCount += (count - 2) * 3 * result.iInVert;
+        result.group[result.groupCount - 1].iCount += (count - 2) * 3 * result.iInVert;
+      }
+
+      if (strncmp(c, MTL_USE, strlen(MTL_USE)) == 0)
+      {
+        c += strlen(MTL_USE);
+        c = Skip(c, ' ');
+        result.group[result.groupCount].matName = ReadUntil(&gameState->arena, c, '\n');
+        ++result.groupCount;
       }
     }
 
     result.positions = result.posCount > 0 ? PUSH_ARRAY(&gameState->arena, v3, result.posCount) : 0;
     result.normals = result.norCount > 0 ? PUSH_ARRAY(&gameState->arena, v3, result.norCount) : 0;
     result.texCoords = result.texCount > 0 ? PUSH_ARRAY(&gameState->arena, v2, result.texCount) : 0;
-    result.indices = PUSH_ARRAY(&gameState->arena, u32, result.iCount);
+    for (u32 i = 0; i < result.groupCount;++i)
+    {
+      result.group[i].indices = PUSH_ARRAY(&gameState->arena, u32, result.group[i].iCount);
+    }
 
     u32 vIndex = 0;
     u32 vnIndex = 0;
     u32 vtIndex = 0;
     u32 index = 0;
+    i32 groupIndex = -1;
     for (char* c = (char*)file.contents; c < fileEnd; ++c)
     {
-      if (c[0] == 'v' && c[1] == ' ' && (c - 1 < file.contents || *(c - 1) == '\n'))
+      if (*c == '#') c = SkipUntil(c, '\n');
+      if (c[0] == 'v' && c[1] == ' ')
       {
         u32 eIndex = 0;
         for (++c; *c != '\n';)
@@ -323,7 +409,7 @@ inline loaded_model DEBUGLoadObj(game_state* gameState, game_memory* mem, char* 
         }
         ++vIndex;
       }
-      if (c[0] == 'v' && c[1] == 't' && c[2] == ' ' && (c - 1 < file.contents || *(c - 1) == '\n'))
+      if (c[0] == 'v' && c[1] == 't' && c[2] == ' ')
       {
         u32 eIndex = 0;
         for (c += 2; *c != '\n';)
@@ -333,7 +419,7 @@ inline loaded_model DEBUGLoadObj(game_state* gameState, game_memory* mem, char* 
         }
         ++vtIndex;
       }
-      if (c[0] == 'v' && c[1] == 'n' && c[2] == ' ' && (c - 1 < file.contents || *(c - 1) == '\n'))
+      if (c[0] == 'v' && c[1] == 'n' && c[2] == ' ')
       {
         u32 eIndex = 0;
         for (c += 2; *c != '\n';)
@@ -343,7 +429,7 @@ inline loaded_model DEBUGLoadObj(game_state* gameState, game_memory* mem, char* 
         }
         ++vnIndex;
       }
-      if (c[0] == 'f' && c[1] == ' ' && (c - 1 < file.contents || *(c - 1) == '\n'))
+      if (c[0] == 'f' && c[1] == ' ')
       {
         //NOTE: count indices
         u32 faceCount = 0;
@@ -368,84 +454,34 @@ inline loaded_model DEBUGLoadObj(game_state* gameState, game_memory* mem, char* 
         {
           for (u32 iFace = 0; iFace < result.iInVert; ++iFace)
           {
-            result.indices[index++] = temp[i * result.iInVert + iFace];
+            result.group[groupIndex].indices[index++] = temp[i * result.iInVert + iFace];
           }
           for (u32 iFace = 0; iFace < result.iInVert; ++iFace)
           {
-            result.indices[index++] = temp[(i + 1) * result.iInVert + iFace];
+            result.group[groupIndex].indices[index++] = temp[(i + 1) * result.iInVert + iFace];
           }
           for (u32 iFace = 0; iFace < result.iInVert; ++iFace)
           {
-            result.indices[index++] = temp[(faceCount - 1) * result.iInVert + iFace];
+            result.group[groupIndex].indices[index++] = temp[(faceCount - 1) * result.iInVert + iFace];
           }
         }
         free(temp);
       }
-      const char* mtlPrefix = "mtllib";
-      if (strncmp(c, mtlPrefix, strlen(mtlPrefix)) == 0)
+      if (strncmp(c, MTL_USE, strlen(MTL_USE)) == 0)
       {
-        c += strlen(mtlPrefix);
+        c += strlen(MTL_USE);
+        ++groupIndex;
+        index = 0;
+      }
+      if (strncmp(c, MTL_LIB, strlen(MTL_LIB)) == 0)
+      {
+        c += strlen(MTL_LIB);
 
         char mtlFile[64];
         sscanf_s(c, "%s", mtlFile, (unsigned int)sizeof(mtlFile));
         result.mtl = DEBUGLoadMTL(gameState, mem, mtlFile);
       }
     }
-  }
-  return result;
-}
-
-
-inline loaded_bitmap DEBUGLoadBMP(game_state* gameState, game_memory* mem, char* fileName)
-{
-  loaded_bitmap result = {};
-
-  debug_read_file_result file = mem->DEBUGPlatformReadFile(fileName);
-  if (file.contentSize > 0)
-  {
-    bmp_header* header = (bmp_header*)file.contents;
-    u32* filePixel = (u32*)((u8*)file.contents + header->offSet);
-
-    result.pixel = PUSH_ARRAY(&gameState->arena, u32, header->width * header->height);
-    result.width = header->width;
-    result.height = header->height;
-
-    bit_scan_result redScan = FindLowestSetBit(header->redMask);
-    bit_scan_result greenScan = FindLowestSetBit(header->greenMask);
-    bit_scan_result blueScan = FindLowestSetBit(header->blueMask);
-    bit_scan_result alphaScan = FindLowestSetBit(header->alphaMask);
-
-    ASSERT(redScan.found);
-    ASSERT(blueScan.found);
-    ASSERT(greenScan.found);
-
-    u32 alphaShilf = (u32)alphaScan.index;
-    u32 redShilf = (u32)redScan.index;
-    u32 greenShilf = (u32)greenScan.index;
-    u32 blueShilf = (i32)blueScan.index;
-
-    for (u32 y = 0; y < header->height; ++y)
-    {
-      for (u32 x = 0; x < header->width; ++x)
-      {
-        u32 index = y * header->width + x;
-
-        u32 red = (filePixel[index] & header->redMask) >> redShilf;
-        u32 green = (filePixel[index] & header->greenMask) >> greenShilf;
-        u32 blue = (filePixel[index] & header->blueMask) >> blueShilf;
-
-        u32 alpha = (alphaScan.found) ? (filePixel[index] & header->alphaMask) >> alphaShilf : 0xFF;
-        float destA = (float)alpha / 255.0f;
-
-        //NODE: Premultiplied Alpha
-        red = (u32)((float)red * destA);
-        green = (u32)((float)green * destA);
-        blue = (u32)((float)blue * destA);
-
-        result.pixel[index] = (red << 16) | (green << 8) | (blue << 0) | (alpha << 24);
-      }
-    }
-    mem->DEBUGPlatformFreeMemory(file.contents);
   }
   return result;
 }
@@ -712,12 +748,12 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     gameState->viewDistance = 1;
 
-    gameState->wall = DEBUGLoadBMP(gameState, memory, "wall_side_left.bmp");
-    gameState->knight = DEBUGLoadBMP(gameState, memory, "knight_idle_anim_f0.bmp");
+    gameState->wall = DEBUGLoadBMP(&gameState->arena, memory, "wall_side_left.bmp");
+    gameState->knight = DEBUGLoadBMP(&gameState->arena, memory, "knight_idle_anim_f0.bmp");
 
     // gameState->cube = DEBUGLoadObj(gameState, memory, "cube.obj");
 
-    gameState->bricks = DEBUGLoadBMP(gameState, memory, "bricks.bmp");
+    gameState->bricks = DEBUGLoadBMP(&gameState->arena, memory, "bricks.bmp");
     gameState->bricksNormal = MakeEmptyBitmap(&gameState->arena, gameState->bricks.width, gameState->bricks.height, false);
     MakeSphereNormalMap(&gameState->bricksNormal, 0.0f);
 

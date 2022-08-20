@@ -1,9 +1,65 @@
 #include "jusa_render.h"
 #include "jusa_math.cpp"
 
-//TODO: remove
+#if INTERNAL
 #include "windows.h"
 #include "stdio.h"
+#include "game.h"
+#endif
+
+inline loaded_bitmap DEBUGLoadBMP(memory_arena* arena, game_memory* mem, char* fileName)
+{
+  loaded_bitmap result = {};
+
+  debug_read_file_result file = mem->DEBUGPlatformReadFile(fileName);
+  if (file.contentSize > 0)
+  {
+    bmp_header* header = (bmp_header*)file.contents;
+    u32* filePixel = (u32*)((u8*)file.contents + header->offSet);
+
+    result.pixel = PUSH_ARRAY(arena, u32, header->width * header->height);
+    result.width = header->width;
+    result.height = header->height;
+
+    bit_scan_result redScan = FindLowestSetBit(header->redMask);
+    bit_scan_result greenScan = FindLowestSetBit(header->greenMask);
+    bit_scan_result blueScan = FindLowestSetBit(header->blueMask);
+    bit_scan_result alphaScan = FindLowestSetBit(header->alphaMask);
+
+    ASSERT(redScan.found);
+    ASSERT(blueScan.found);
+    ASSERT(greenScan.found);
+
+    u32 alphaShilf = (u32)alphaScan.index;
+    u32 redShilf = (u32)redScan.index;
+    u32 greenShilf = (u32)greenScan.index;
+    u32 blueShilf = (i32)blueScan.index;
+
+    for (u32 y = 0; y < header->height; ++y)
+    {
+      for (u32 x = 0; x < header->width; ++x)
+      {
+        u32 index = y * header->width + x;
+
+        u32 red = (filePixel[index] & header->redMask) >> redShilf;
+        u32 green = (filePixel[index] & header->greenMask) >> greenShilf;
+        u32 blue = (filePixel[index] & header->blueMask) >> blueShilf;
+
+        u32 alpha = (alphaScan.found) ? (filePixel[index] & header->alphaMask) >> alphaShilf : 0xFF;
+        float destA = (float)alpha / 255.0f;
+
+        //NODE: Premultiplied Alpha
+        red = (u32)((float)red * destA);
+        green = (u32)((float)green * destA);
+        blue = (u32)((float)blue * destA);
+
+        result.pixel[index] = (red << 16) | (green << 8) | (blue << 0) | (alpha << 24);
+      }
+    }
+    mem->DEBUGPlatformFreeMemory(file.contents);
+  }
+  return result;
+}
 
 v4 SRGB1ToLinear1(v4 col)
 {
@@ -832,87 +888,99 @@ void ProcessTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, came
   DrawTriangle(queue, drawBuffer, cam, light, tri, faceNormal, color, texture);
 }
 
-void Draw(platform_work_queue* queue, loaded_bitmap* drawBuffer, directional_light light, camera* cam, loaded_model* model, loaded_bitmap* texture, v4 color)
+void Draw(platform_work_queue* queue, loaded_bitmap* drawBuffer, directional_light light, camera* cam, loaded_model* model, v4 color)
 {
-  u32* indices = model->indices;
   v2* uv = model->texCoords;
   v3* pos = model->positions;
   v3* nor = model->normals;
 
-  u32 iCount = model->iCount;
   u32 iInVert = model->iInVert;
-  u32 vertCount = iCount / iInVert;
-  u32 faceCount = vertCount / 3;
-  v3* faceNormals = (v3*)malloc(sizeof(v3) * faceCount);
-  for (u32 i = 0; i < vertCount; i += 3)
+  for (u32 i = 0; i < model->groupCount; ++i)
   {
-    triangle tri;
-    v3 normals[3];
-    u32 realI = i * iInVert;
-    tri.p0.pos = pos[indices[realI++]];
-    if (uv != NULL) tri.p0.uv = uv[indices[realI++]];
-    if (nor != NULL) normals[0] = nor[indices[realI++]];
-    tri.p1.pos = pos[indices[realI++]];
-    if (uv != NULL) tri.p1.uv = uv[indices[realI++]];
-    if (nor != NULL) normals[1] = nor[indices[realI++]];
-    tri.p2.pos = pos[indices[realI++]];
-    if (uv != NULL) tri.p2.uv = uv[indices[realI++]];
-    if (nor != NULL) normals[2] = nor[indices[realI++]];
+    u32 iCount = model->group[i].iCount;
+    u32* indices = model->group[i].indices;
+    u32 vertCount = iCount / iInVert;
+    u32 faceCount = vertCount / 3;
+    v3* faceNormals = (v3*)malloc(sizeof(v3) * faceCount);
 
-    if (nor == NULL)
+    for (u32 vertIndex = 0; vertIndex < vertCount; vertIndex += 3)
     {
-      faceNormals[i / 3] = -Cross(tri.p1.pos - tri.p0.pos, tri.p2.pos - tri.p0.pos);
+      triangle tri;
+      v3 normals[3];
+      u32 realI = vertIndex * iInVert;
+      tri.p0.pos = pos[indices[realI++]];
+      if (uv != NULL) tri.p0.uv = uv[indices[realI++]];
+      if (nor != NULL) normals[0] = nor[indices[realI++]];
+      tri.p1.pos = pos[indices[realI++]];
+      if (uv != NULL) tri.p1.uv = uv[indices[realI++]];
+      if (nor != NULL) normals[1] = nor[indices[realI++]];
+      tri.p2.pos = pos[indices[realI++]];
+      if (uv != NULL) tri.p2.uv = uv[indices[realI++]];
+      if (nor != NULL) normals[2] = nor[indices[realI++]];
+
+      if (nor == NULL)
+      {
+        faceNormals[vertIndex / 3] = -Cross(tri.p1.pos - tri.p0.pos, tri.p2.pos - tri.p0.pos);
+      }
+      else
+      {
+        faceNormals[vertIndex / 3] = Normalize(normals[0] + normals[1] + normals[2]);
+      }
     }
-    else
+
+    for (u32 vertIndex = 0; vertIndex < model->posCount; ++vertIndex)
     {
-      //NODE: flat shadeing
-      faceNormals[i / 3] = Normalize(normals[0] + normals[1] + normals[2]);
+      //NOTE: vertex shader
+      pos[vertIndex] = WorldPointToCamera(cam, pos[vertIndex]);
+
+      // char buf[256];
+      // _snprintf_s(buf, sizeof(buf), "vertex%i: pos=%f, %f, %f", i, ver[i].pos.x, ver[i].pos.y, ver[i].pos.z);
+      // OutputDebugStringA(buf);
     }
+
+    for (u32 vertIndex = 0; vertIndex < vertCount; vertIndex += 3)
+    {
+      triangle tri;
+      v3 normals[3];
+      u32 realI = vertIndex * iInVert;
+      tri.p0.pos = pos[indices[realI++]];
+      if (uv != NULL) tri.p0.uv = uv[indices[realI++]];
+      if (nor != NULL) normals[0] = nor[indices[realI++]];
+      tri.p1.pos = pos[indices[realI++]];
+      if (uv != NULL) tri.p1.uv = uv[indices[realI++]];
+      if (nor != NULL) normals[1] = nor[indices[realI++]];
+      tri.p2.pos = pos[indices[realI++]];
+      if (uv != NULL) tri.p2.uv = uv[indices[realI++]];
+      if (nor != NULL) normals[2] = nor[indices[realI++]];
+
+      v3 normal;
+      if (nor == NULL)
+      {
+        normal = Cross(tri.p1.pos - tri.p0.pos, tri.p2.pos - tri.p0.pos);
+      }
+      else
+      {
+        normal = Normalize(WorldPointToCamera(cam, normals[0] + normals[1] + normals[2]));
+      }
+
+      //NOTE: backface culling
+      //NOTE: cam dir in camera space is V3(0, 0, 1);
+      loaded_bitmap texture;
+      for (u32 matIndex = 0; matIndex < model->mtl.matCount; ++matIndex)
+      {
+        if (strcmp(model->mtl.materials[matIndex].name, model->group[i].matName) == 0)
+        {
+          texture = model->mtl.materials[matIndex].diffuseMap;
+          break;
+        }
+      }
+      if (Dot(V3(0, 0, 1), normal) > 0.0f)
+      {
+        ProcessTriangle(queue, drawBuffer, cam, light, tri, faceNormals[vertIndex / 3], &texture, color);
+      }
+    }
+    free(faceNormals);
   }
-
-  for (u32 i = 0; i < model->posCount; ++i)
-  {
-    //NOTE: vertex shader
-    pos[i] = WorldPointToCamera(cam, pos[i]);
-
-    // char buf[256];
-    // _snprintf_s(buf, sizeof(buf), "vertex%i: pos=%f, %f, %f", i, ver[i].pos.x, ver[i].pos.y, ver[i].pos.z);
-    // OutputDebugStringA(buf);
-  }
-
-  for (u32 i = 0; i < vertCount; i += 3)
-  {
-    triangle tri;
-    v3 normals[3];
-    u32 realI = i * iInVert;
-    tri.p0.pos = pos[indices[realI++]];
-    if (uv != NULL) tri.p0.uv = uv[indices[realI++]];
-    if (nor != NULL) normals[0] = nor[indices[realI++]];
-    tri.p1.pos = pos[indices[realI++]];
-    if (uv != NULL) tri.p1.uv = uv[indices[realI++]];
-    if (nor != NULL) normals[1] = nor[indices[realI++]];
-    tri.p2.pos = pos[indices[realI++]];
-    if (uv != NULL) tri.p2.uv = uv[indices[realI++]];
-    if (nor != NULL) normals[2] = nor[indices[realI++]];
-
-    v3 normal;
-    if (nor == NULL)
-    {
-      normal = Cross(tri.p1.pos - tri.p0.pos, tri.p2.pos - tri.p0.pos);
-    }
-    else
-    {
-      normal = Normalize(WorldPointToCamera(cam, normals[0] + normals[1] + normals[2]));
-    }
-
-    //NOTE: backface culling
-    //NOTE: cam dir in camera space is V3(0, 0, 1);
-    if (Dot(V3(0, 0, 1), normal) > 0.0f)
-    {
-      ProcessTriangle(queue, drawBuffer, cam, light, tri, faceNormals[i / 3], texture, color);
-    }
-  }
-  free(faceNormals);
 }
 
 void DrawRectSlowly(loaded_bitmap* drawBuffer, camera* cam, v2 origin, v2 xAxis, v2 yAxis, v4 color, loaded_bitmap* bitmap, loaded_bitmap* normalMap, environment_map* top, environment_map* middle, environment_map* bottom)
@@ -1175,7 +1243,7 @@ static void RenderGroupOutput(platform_work_queue* queue, render_group* renderGr
         render_entry_model* entry = (render_entry_model*)((u8*)renderGroup->pushBuffer.base + index);
         index += sizeof(*entry);
 
-        Draw(queue, drawBuffer, entry->light, renderGroup->cam, entry->model, entry->bitmap, entry->col);
+        Draw(queue, drawBuffer, entry->light, renderGroup->cam, entry->model, entry->col);
       } break;
 
       // INVALID_DEFAULT_CASE;

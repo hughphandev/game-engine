@@ -34,6 +34,15 @@ struct loaded_material
   float dissolved;
   float opticalDensity;
   i32 illumModels;
+
+  loaded_bitmap ambientMap;
+  loaded_bitmap diffuseMap;
+  loaded_bitmap specularMap;
+  loaded_bitmap specularExponentMap;
+  loaded_bitmap alphaMap;
+  loaded_bitmap bumpMap;
+  loaded_bitmap displacementMap;
+  loaded_bitmap decalMap;
 };
 
 struct loaded_mtl
@@ -42,6 +51,14 @@ struct loaded_mtl
   size_t matCount;
 };
 
+struct index_group
+{
+  char* matName;
+  u32* indices;
+  u32 iCount;
+};
+
+#define MAX_MATERIAL_COUNT 5
 struct loaded_model
 {
   v3* positions;
@@ -53,9 +70,9 @@ struct loaded_model
   v2* texCoords;
   u32 texCount;
 
-  u32* indices;
-  u32 iCount;
+  index_group group[5];
   u32 iInVert;
+  u32 groupCount;
 
   loaded_mtl mtl;
 };
