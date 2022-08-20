@@ -901,7 +901,7 @@ void Draw(platform_work_queue* queue, loaded_bitmap* drawBuffer, directional_lig
     u32* indices = model->group[i].indices;
     u32 vertCount = iCount / iInVert;
     u32 faceCount = vertCount / 3;
-    v3* faceNormals = (v3*)malloc(sizeof(v3) * faceCount);
+    v3* worldNormals = (v3*)malloc(sizeof(v3) * faceCount);
 
     for (u32 vertIndex = 0; vertIndex < vertCount; vertIndex += 3)
     {
@@ -920,11 +920,11 @@ void Draw(platform_work_queue* queue, loaded_bitmap* drawBuffer, directional_lig
 
       if (nor == NULL)
       {
-        faceNormals[vertIndex / 3] = -Cross(tri.p1.pos - tri.p0.pos, tri.p2.pos - tri.p0.pos);
+        worldNormals[vertIndex / 3] = -Cross(tri.p1.pos - tri.p0.pos, tri.p2.pos - tri.p0.pos);
       }
       else
       {
-        faceNormals[vertIndex / 3] = Normalize(normals[0] + normals[1] + normals[2]);
+        worldNormals[vertIndex / 3] = Normalize(normals[0] + normals[1] + normals[2]);
       }
     }
 
@@ -953,18 +953,16 @@ void Draw(platform_work_queue* queue, loaded_bitmap* drawBuffer, directional_lig
       if (uv != NULL) tri.p2.uv = uv[indices[realI++]];
       if (nor != NULL) normals[2] = nor[indices[realI++]];
 
-      v3 normal;
+      v3 camNormal;
       if (nor == NULL)
       {
-        normal = Cross(tri.p1.pos - tri.p0.pos, tri.p2.pos - tri.p0.pos);
+        camNormal = Cross(tri.p1.pos - tri.p0.pos, tri.p2.pos - tri.p0.pos);
       }
       else
       {
-        normal = Normalize(WorldPointToCamera(cam, normals[0] + normals[1] + normals[2]));
+        camNormal = Normalize(WorldPointToCamera(cam, normals[0] + normals[1] + normals[2]));
       }
 
-      //NOTE: backface culling
-      //NOTE: cam dir in camera space is V3(0, 0, 1);
       loaded_bitmap texture;
       for (u32 matIndex = 0; matIndex < model->mtl.matCount; ++matIndex)
       {
@@ -974,12 +972,14 @@ void Draw(platform_work_queue* queue, loaded_bitmap* drawBuffer, directional_lig
           break;
         }
       }
-      if (Dot(faceNormals[vertIndex / 3], cam->dir) < 0.0f)
+
+      //NOTE: backface culling
+      if (Dot(camNormal, tri.p0.pos) > 0)
       {
-        ProcessTriangle(queue, drawBuffer, cam, light, tri, faceNormals[vertIndex / 3], &texture, color);
+        ProcessTriangle(queue, drawBuffer, cam, light, tri, worldNormals[vertIndex / 3], &texture, color);
       }
     }
-    free(faceNormals);
+    free(worldNormals);
   }
 }
 
