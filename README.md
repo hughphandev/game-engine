@@ -3,7 +3,7 @@ An experimental game engine for educational purposes!
 
 # Features Overview
 ## Features Done (for now)
-- Assets Loading: BMP, WAV
+- Assets Loading: BMP, WAV, OBJ
 - Memory Managerment: Custom
 - Graphic: Software renderer
 - Audio: Stereo

@@ -38,12 +38,11 @@ inline loaded_bitmap DEBUGLoadBMP(memory_arena* arena, game_memory* mem, char* f
     u32 greenShilf = (u32)greenScan.index;
     u32 blueShilf = (i32)blueScan.index;
 
+    u32 index = 0;
     for (u32 y = 0; y < header->height; ++y)
     {
       for (u32 x = 0; x < header->width; ++x)
       {
-        u32 index = y * header->width + x;
-
         u32 red = (filePixel[index] & header->redMask) >> redShilf;
         u32 green = (filePixel[index] & header->greenMask) >> greenShilf;
         u32 blue = (filePixel[index] & header->blueMask) >> blueShilf;
@@ -57,6 +56,7 @@ inline loaded_bitmap DEBUGLoadBMP(memory_arena* arena, game_memory* mem, char* f
         blue = (u32)((float)blue * destA);
 
         result.pixel[index] = (red << 16) | (green << 8) | (blue << 0) | (alpha << 24);
+        ++index;
       }
     }
     mem->DEBUGPlatformFreeMemory(file.contents);
@@ -66,7 +66,34 @@ inline loaded_bitmap DEBUGLoadBMP(memory_arena* arena, game_memory* mem, char* f
 
 inline loaded_bitmap LoadImageToArena(memory_arena* arena, game_memory* mem, char* fileName)
 {
-  return DEBUGLoadBMP(arena, mem, fileName);
+  loaded_bitmap result = {};
+  int channel;
+  stbi_set_flip_vertically_on_load(1);
+  u32* pixel = (u32*)stbi_load(fileName, &result.width, &result.height, &channel, 4);
+  result.pixel = PUSH_ARRAY(arena, u32, result.width * result.height);
+  size_t index = 0;
+  for (size_t y = 0; y < result.height; ++y)
+  {
+    for (size_t x = 0; x < result.width; ++x)
+    {
+      u32 red = (pixel[index] >> 0) & 0xFF;
+      u32 green = (pixel[index] >> 8) & 0xFF;
+      u32 blue = (pixel[index] >> 16) & 0xFF;
+      u32 alpha = (pixel[index] >> 24) & 0xFF;
+
+      float fAlpha = (float)alpha / 255.0f;
+
+      //NODE: Premultiplied Alpha
+      red = (u32)((float)red * fAlpha);
+      green = (u32)((float)green * fAlpha);
+      blue = (u32)((float)blue * fAlpha);
+
+      result.pixel[index] = (red << 16) | (green << 8) | (blue << 0) | (alpha << 24);
+      ++index;
+    }
+  }
+  stbi_image_free(pixel);
+  return result;
 }
 
 v4 SRGB1ToLinear1(v4 col)

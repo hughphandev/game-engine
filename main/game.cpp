@@ -748,12 +748,12 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     gameState->viewDistance = 1;
 
-    gameState->wall = DEBUGLoadBMP(&gameState->arena, memory, "wall_side_left.bmp");
-    gameState->knight = DEBUGLoadBMP(&gameState->arena, memory, "knight_idle_anim_f0.bmp");
+    gameState->wall = LoadImageToArena(&gameState->arena, memory, "wall_side_left.bmp");
+    gameState->knight = LoadImageToArena(&gameState->arena, memory, "knight_idle_anim_f0.bmp");
 
     // gameState->cube = DEBUGLoadObj(gameState, memory, "cube.obj");
 
-    gameState->bricks = DEBUGLoadBMP(&gameState->arena, memory, "bricks.bmp");
+    gameState->bricks = LoadImageToArena(&gameState->arena, memory, "bricks.bmp");
     gameState->bricksNormal = MakeEmptyBitmap(&gameState->arena, gameState->bricks.width, gameState->bricks.height, false);
     MakeSphereNormalMap(&gameState->bricksNormal, 0.0f);
 
@@ -805,18 +805,20 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   render_group* renderGroup = InitRenderGroup(&tranState.tranArena, MEGABYTES(4), &gameState->cam);
   Clear(renderGroup, V4(0.25f, 0.25f, 0.25f, 0.0f));
 
+  // LoadEntity(&tranState, gameState->player);
+
   for (int i = 0; i < tranState.activeEntityCount; ++i)
   {
     switch (tranState.activeEntity[i]->type)
     {
       case ENTITY_PLAYER:
       {
-        // PushBitmap(renderGroup, &gameState->knight, tranState.activeEntity[i]->pos, tranState.activeEntity[i]->size.xy);
+        PushBitmap(renderGroup, &gameState->knight, tranState.activeEntity[i]->pos, tranState.activeEntity[i]->size.xy);
       } break;
 
       case ENTITY_WALL:
       {
-        // PushBitmap(renderGroup, &gameState->wall, tranState.activeEntity[i]->pos, tranState.activeEntity[i]->size.xy);
+        PushBitmap(renderGroup, &gameState->wall, tranState.activeEntity[i]->pos, tranState.activeEntity[i]->size.xy);
       } break;
 
       case ENTITY_PROJECTILE:
