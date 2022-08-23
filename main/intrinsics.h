@@ -1,8 +1,8 @@
-#ifndef JUSA_INTRINSICS_H
-#define JUSA_INTRINSICS_H
+#ifndef INTRINSICS_H
+#define INTRINSICS_H
 
 #include <intrin.h>
-#include "jusa_types.h"
+#include "types.h"
 
 //TODO: moer compiler!
 #ifdef COMPILER_MSVC

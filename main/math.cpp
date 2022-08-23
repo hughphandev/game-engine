@@ -1,8 +1,8 @@
-#ifndef JUSA_MATH_CPP
-#define JUSA_MATH_CPP
+#ifndef MATH_CPP
+#define MATH_CPP
 
-#include "jusa_math.h"
-#include "jusa_utils.h"
+#include "math.h"
+#include "utils.h"
 #include <intrin.h>
 
 //TODO: Use math.h for now. Switch to platform efficient code in the future!

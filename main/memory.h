@@ -1,7 +1,7 @@
-#ifndef JUSA_MEMORY_H
-#define JUSA_MEMORY_H
+#ifndef MEMORY_H
+#define MEMORY_H
 
-#include "jusa_utils.h"
+#include "utils.h"
 
 struct memory_arena
 {

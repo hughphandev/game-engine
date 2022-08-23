@@ -1,11 +1,11 @@
-#ifndef JUSA_RENDER_H
-#define JUSA_RENDER_H
+#ifndef RENDER_H
+#define RENDER_H
 
-#include "jusa_types.h"
-#include "jusa_utils.h"
-#include "jusa_math.h"
-#include "jusa_memory.h"
-#include "jusa_thread.h"
+#include "types.h"
+#include "utils.h"
+#include "math.h"
+#include "memory.h"
+#include "thread.h"
 
 struct game_offscreen_buffer
 {

@@ -1,6 +1,10 @@
+#ifndef RANDOM_CPP
+#define RANDOM_CPP
+
+
 #include <time.h>
 #include <stdlib.h>
-#include "jusa_random.h"
+#include "random.h"
 
 float Rand(float a, float b)
 {
@@ -9,3 +13,5 @@ float Rand(float a, float b)
     float delta = b - a;
     return a + (delta * r);
 }
+
+#endif

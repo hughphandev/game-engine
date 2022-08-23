@@ -1,8 +1,8 @@
-#ifndef JUSA_MATH_H
-#define JUSA_MATH_H
+#ifndef MATH_H
+#define MATH_H
 
-#include "jusa_types.h"
-#include "jusa_utils.h"
+#include "types.h"
+#include "utils.h"
 
 #define DEFINE_LERP(T) T Lerp(T a, T b, float t) { return (a + ((b - a) * t)); }
 

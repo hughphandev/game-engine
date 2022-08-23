@@ -1,4 +1,7 @@
-#include "jusa_physics.h"
+#ifndef PHYSICS_CPP
+#define PHYSICS_CPP
+
+#include "physics.h"
 
 bool IsRecOverlapping(rec a, rec b)
 {
@@ -69,3 +72,5 @@ ray_cast_hit RayToRec(v2 rayOrigin, v2 rayVec, rec r)
   }
   return result;
 }
+
+#endif

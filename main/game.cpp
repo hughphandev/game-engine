@@ -1,10 +1,13 @@
+#ifndef GAME_CPP
+#define GAME_CPP
+
 #include "game.h"
-#include "jusa_math.cpp"
-#include "jusa_intrinsics.h"
-#include "jusa_render.cpp"
-#include "jusa_random.cpp"
-#include "jusa_world.cpp"
-#include "jusa_physics.cpp"
+#include "intrinsics.h"
+#include "math.cpp"
+#include "render.cpp"
+#include "random.cpp"
+#include "world.cpp"
+#include "physics.cpp"
 
 inline void MoveEntity(entity* it, v2 motion, float timeStep)
 {
@@ -981,3 +984,5 @@ extern "C" GAME_OUTPUT_SOUND(GameOutputSound)
     // PlaySound(soundBuffer, &gameState->sounds[0]);
   }
 }
+
+#endif

@@ -1,7 +1,7 @@
-#ifndef JUSA_UTILS_H
-#define JUSA_UTILS_H
+#ifndef UTILS_H
+#define UTILS_H
 
-#include "jusa_types.h"
+#include "types.h"
 
 #define ARRAY_COUNT(array) (sizeof(array) / sizeof((array)[0]))
 

@@ -1,4 +1,3 @@
-
 #include "game.h"
 
 #include <windows.h>
@@ -11,8 +10,8 @@
 #include <stdint.h>
 
 #include "win32_platform.h"
-#include "jusa_utils.h"
-#include "jusa_thread.h"
+#include "utils.h"
+#include "thread.h"
 
 // TODO: Global for now
 static bool g_running;

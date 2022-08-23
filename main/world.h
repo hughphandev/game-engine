@@ -1,8 +1,8 @@
-#ifndef JUSA_WORLD_H
-#define JUSA_WORLD_H
+#ifndef WORLD_H
+#define WORLD_H
 
-#include "jusa_types.h"
-#include "jusa_math.h"
+#include "types.h"
+#include "math.h"
 
 struct game_world
 {

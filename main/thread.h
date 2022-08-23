@@ -1,5 +1,5 @@
-#ifndef JUSA_THREAD_H
-#define JUSA_THREAD_H
+#ifndef THREAD_H
+#define THREAD_H
 
 
 #define WORK_ENTRY_CALLBACK(name) void name(void* data)

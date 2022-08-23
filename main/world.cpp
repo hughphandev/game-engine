@@ -1,5 +1,8 @@
-#include "jusa_math.cpp"
-#include "jusa_world.h"
+#ifndef WORLD_H
+#define WORLD_H
+
+#include "math.cpp"
+#include "world.h"
 
 inline rec GetTileBound(game_world* world, i32 x, i32 y)
 {
@@ -34,3 +37,5 @@ inline v2 GetTileIndex(game_world* world, v2 pos)
 {
   return GetTileIndex(world, pos.x, pos.y);
 }
+
+#endif

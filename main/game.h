@@ -1,11 +1,11 @@
 #ifndef GAME_H
 #define GAME_H
 
-#include "jusa_utils.h"
-#include "jusa_world.h"
-#include "jusa_render.h"
-#include "jusa_math.h"
-#include "jusa_thread.h"
+#include "utils.h"
+#include "world.h"
+#include "render.h"
+#include "math.h"
+#include "thread.h"
 
 #if INTERNAL
 struct debug_read_file_result

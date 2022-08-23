@@ -1,5 +1,8 @@
-#include "jusa_render.h"
-#include "jusa_math.cpp"
+#ifndef RENDER_CPP
+#define RENDER_CPP
+
+#include "render.h"
+#include "math.cpp"
 
 #if INTERNAL
 #include "windows.h"
@@ -1406,3 +1409,5 @@ inline render_group* InitRenderGroup(memory_arena* arena, size_t maxPushBufferSi
 
   return result;
 }
+
+#endif
