@@ -1,31 +1,15 @@
 #ifndef GAME_H
 #define GAME_H
 
+#include "memory.h"
 #include "utils.h"
 #include "world.h"
 #include "render.h"
 #include "math.h"
 #include "thread.h"
+#include "assets.h"
 
 #if INTERNAL
-struct debug_read_file_result
-{
-  void* contents;
-  u32 contentSize;
-};
-
-#define DEBUG_PLATFORM_READ_FILE(name) debug_read_file_result name(char* fileName)
-typedef DEBUG_PLATFORM_READ_FILE(debug_platform_read_file);
-
-#define DEBUG_PLATFORM_FREE_MEMORY(name)void name (void* memory) 
-typedef DEBUG_PLATFORM_FREE_MEMORY(debug_platform_free_memory);
-
-#define DEBUG_PLATFORM_WRITE_FILE(name) bool name(char* fileName, size_t memorySize, void* memory) 
-typedef DEBUG_PLATFORM_WRITE_FILE(debug_platform_write_file);
-
-DEBUG_PLATFORM_READ_FILE(DEBUGPlatformReadFile);
-DEBUG_PLATFORM_FREE_MEMORY(DEBUGPlatformFreeMemory);
-DEBUG_PLATFORM_WRITE_FILE(DEBUGPlatformWriteFile);
 
 enum
 {
@@ -100,16 +84,6 @@ struct game_input
   float dt;
 }; // TODO: Clean up
 
-
-struct loaded_sound
-{
-  void* mem;
-  size_t samplesCount;
-  size_t channelsCount;
-
-  size_t sampleIndex;
-  bool isLooped;
-};
 
 enum entity_type
 {
@@ -194,63 +168,6 @@ struct transient_state
   bool isInit;
 };
 
-#pragma pack(push, 1)
-struct bmp_header
-{
-  //BMP Header
-  u16 signature;
-  u32 fileSize;
-  u16 reserved1;
-  u16 reserved2;
-  u32 offSet;
-
-  //DIB Header
-  u32 headerSize;
-  u32 width;
-  u32 height;
-  u16 planes;
-  u16 bitsPerPixel;
-  u32 compression;
-  u32 sizeOfBitMap;
-  u32 printWidth;
-  u32 printHeight;
-  u32 colorPalette;
-  u32 important;
-
-  u32 redMask;
-  u32 greenMask;
-  u32 blueMask;
-  u32 alphaMask;
-};
-
-struct wav_header
-{
-  u32 riffID;
-  u32 fileSize;
-  u32 waveID;
-};
-
-struct riff_chunk
-{
-  u32 id;
-  u32 dataSize;
-};
-struct wav_fmt
-{
-  u16 audioFormat;
-  u16 nChannels;
-  u32 sampleRate;
-  u32 byteRate;
-  u16 blockAlign;
-  u16 bitsPerSample;
-  u16 cbSize;
-  u16 validBitsPerSample;
-  u32 channelMask;
-  char subFormat[16];
-};
-#pragma pack(pop)
-
-
 struct game_memory
 {
   bool isInit;
@@ -261,9 +178,8 @@ struct game_memory
   u64 transientStorageSize;
   void* transientStorage; // TODO: REQUIRE clear to zero on startup
 
-  debug_platform_free_memory* DEBUGPlatformFreeMemory;
-  debug_platform_read_file* DEBUGPlatformReadFile;
-  debug_platform_write_file* DEBUGPlatformWriteFile;
+  file_io fileIO;
+
   platform_add_work_entry* PlatformAddWorkEntry;
   platform_complete_all_work* PlatformCompleteAllWork;
 

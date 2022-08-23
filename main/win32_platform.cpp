@@ -981,9 +981,9 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, 
       game_memory gameMemory = {};
       gameMemory.permanentStorageSize = MEGABYTES(512);
       gameMemory.transientStorageSize = MEGABYTES(128);
-      gameMemory.DEBUGPlatformFreeMemory = DEBUGPlatformFreeMemory;
-      gameMemory.DEBUGPlatformReadFile = DEBUGPlatformReadFile;
-      gameMemory.DEBUGPlatformWriteFile = DEBUGPlatformWriteFile;
+      gameMemory.fileIO.Free = DEBUGPlatformFreeMemory;
+      gameMemory.fileIO.Read = DEBUGPlatformReadFile;
+      gameMemory.fileIO.Write = DEBUGPlatformWriteFile;
       gameMemory.workQueue = &queue;
 
       gameMemory.PlatformAddWorkEntry = (platform_add_work_entry*)Win32AddWorkEntry;

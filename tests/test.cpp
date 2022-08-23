@@ -1,5 +1,5 @@
-#include "jusa_test.h"
-#include "jusa_math.cpp"
+#include "tests/test.h"
+#include "main/math.cpp"
 
 int main(int argc, char const* argv[])
 {

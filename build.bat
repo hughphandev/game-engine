@@ -8,7 +8,7 @@ set LDFLAGS=-incremental:no
 set OPTIMIZE=/0i /02 /fp:fast
 
 set PROJDIR=%CD%\
-set TESTDIR=%PROJDIR%test\
+set TESTDIR=%PROJDIR%tests\
 set BUILDDIR=%PROJDIR%build\
 set OBJDIR=%BUILDDIR%obj\
 

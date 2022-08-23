@@ -2,6 +2,7 @@
 #define MEMORY_H
 
 #include "utils.h"
+#include <memory.h>
 
 struct memory_arena
 {

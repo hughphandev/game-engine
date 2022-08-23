@@ -6,76 +6,13 @@
 #include "math.h"
 #include "memory.h"
 #include "thread.h"
+#include "assets.h"
 
 struct game_offscreen_buffer
 {
   int width;
   int height;
   void* memory;
-};
-
-#define BITMAP_PIXEL_SIZE (sizeof(u32))
-struct loaded_bitmap
-{
-  //NOTE: ARGB
-  v2 align;
-  u32* pixel;
-  int width;
-  int height;
-};
-
-struct loaded_material
-{
-  char* name;
-  v3 ambient;
-  v3 diffuse;
-  v3 specular;
-  v3 emissive;
-  float specularExponent;
-  float dissolved;
-  float opticalDensity;
-  i32 illumModels;
-
-  loaded_bitmap ambientMap;
-  loaded_bitmap diffuseMap;
-  loaded_bitmap specularMap;
-  loaded_bitmap specularExponentMap;
-  loaded_bitmap alphaMap;
-  loaded_bitmap bumpMap;
-  loaded_bitmap displacementMap;
-  loaded_bitmap decalMap;
-};
-
-struct loaded_mtl
-{
-  loaded_material* materials;
-  size_t matCount;
-};
-
-struct index_group
-{
-  char* matName;
-  u32* indices;
-  u32 iCount;
-};
-
-#define MAX_MATERIAL_COUNT 5
-struct loaded_model
-{
-  v3* positions;
-  u32 posCount;
-
-  v3* normals;
-  u32 norCount;
-
-  v2* texCoords;
-  u32 texCount;
-
-  index_group group[5];
-  u32 iInVert;
-  u32 groupCount;
-
-  loaded_mtl mtl;
 };
 
 struct environment_map

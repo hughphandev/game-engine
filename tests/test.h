@@ -1,5 +1,5 @@
-#ifndef JUSA_TEST_H
-#define JUSA_TEST_H
+#ifndef TEST_H
+#define TEST_H
 
 #include <stdio.h>
 #include <string.h>

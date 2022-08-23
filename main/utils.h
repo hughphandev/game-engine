@@ -3,6 +3,9 @@
 
 #include "types.h"
 
+#include <memory.h>
+#include <string.h>
+
 #define ARRAY_COUNT(array) (sizeof(array) / sizeof((array)[0]))
 
 #define KILOBYTES(value) ((value) * 1024LL) 
@@ -63,7 +66,6 @@ float Max(float* value, int count)
   return result;
 }
 
-#include <memory.h>
 
 void Memcpy(void* dest, void* src, size_t size)
 {
@@ -92,4 +94,29 @@ inline i32 StrToI(char* str, char** pStr)
 }
 
 
+inline size_t CountSubString(char* input, char* subString)
+{
+  size_t result = 0;
+  size_t strLen = strlen(subString);
+  for (char* c = input; *c != '\0'; ++c)
+  {
+    if (strncmp(c, subString, strLen) == 0)
+    {
+      ++result;
+      c += strLen - 1;
+    }
+  }
+  return result;
+}
+
+inline char* Skip(char* c, char skip)
+{
+  while (*c == skip) ++c;
+  return c;
+}
+inline char* SkipUntil(char* c, char until)
+{
+  while (*c != until) ++c;
+  return c;
+}
 #endif
