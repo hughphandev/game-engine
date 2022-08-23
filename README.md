@@ -15,7 +15,7 @@ An experimental game engine for educational purposes!
 - Lighting: Basic directional lighting
 
 ## Features TODO
-- Obj File loading
+- Shading
 - Font Rendering
 - 3D AABB collision detection
 - Hardware Acceleration

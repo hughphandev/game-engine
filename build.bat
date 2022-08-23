@@ -8,7 +8,6 @@ set LDFLAGS=-incremental:no
 set OPTIMIZE=/0i /02 /fp:fast
 
 set PROJDIR=%CD%\
-set SOURCEDIR=%PROJDIR%src\
 set TESTDIR=%PROJDIR%test\
 set BUILDDIR=%PROJDIR%build\
 set OBJDIR=%BUILDDIR%obj\
@@ -19,13 +18,13 @@ REM Clean up
    del %BUILDDIR%*.pdb
 
 REM Game code
-	cl %CFLAGS% -Fo:%OBJDIR% -Fd:%BUILDDIR% %SOURCEDIR%game.cpp /link %LDFLAGS% /DLL /EXPORT:GameUpdateAndRender /EXPORT:GameOutputSound /OUT:%BUILDDIR%game.dll /PDB:%BUILDDIR%game_%DATETIME%.pdb
+	cl %CFLAGS% /I%PROJDIR% -Fo:%OBJDIR% -Fd:%BUILDDIR% %PROJDIR%main\game.cpp /link %LDFLAGS% /DLL /EXPORT:GameUpdateAndRender /EXPORT:GameOutputSound /OUT:%BUILDDIR%game.dll /PDB:%BUILDDIR%game_%DATETIME%.pdb
 
 REM Platform code
-	cl %CFLAGS% /Fo:%OBJDIR% /Fd:%OBJDIR% %SOURCEDIR%win32_platform.cpp /link %LDFLAGS% %LDLIBS% /OUT:%BUILDDIR%game.exe
+	cl %CFLAGS% /I%PROJDIR% /Fo:%OBJDIR% /Fd:%OBJDIR% %PROJDIR%main\win32_platform.cpp /link %LDFLAGS% %LDLIBS% /OUT:%BUILDDIR%game.exe
 
 REM Test code
-	cl %CFLAGS% /I%SOURCEDIR% /Fo:%OBJDIR% /Fd:%OBJDIR% %TESTDIR%test.cpp /link %LDFLAGS% %LDLIBS% /OUT:%BUILDDIR%test.exe
+	cl %CFLAGS% /I%PROJDIR% /Fo:%OBJDIR% /Fd:%OBJDIR% %TESTDIR%test.cpp /link %LDFLAGS% %LDLIBS% /OUT:%BUILDDIR%test.exe
 
 REM Copy Assets
-	xcopy /S /Q %SOURCEDIR%data %BUILDDIR% /Y
+	xcopy /S /Q %PROJDIR%data %BUILDDIR% /Y
