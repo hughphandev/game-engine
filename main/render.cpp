@@ -479,7 +479,7 @@ vertex ShilfPointToNextCol(vertex origin, vertex dir)
   return result;
 }
 
-void FillFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* cam, light_config light, v3 faceNormal, v4 color, vertex_line lineL, vertex_line lineR, float startY, float endY)
+void FillFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* cam, light_config light, v3 faceNormal, v4 color, vertex_line scrLineL, vertex_line scrLineR, line lineL, line lineR, float startY, float endY)
 {
   v2 scrSize = V2(drawBuffer->width, drawBuffer->height);
   v2 bitmapMax = V2(bitmap->width - 1, bitmap->height - 1);
@@ -498,32 +498,41 @@ void FillFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* c
   __m128 bitmapMaxX_x4 = _mm_set_ps1(bitmapMax.x);
   __m128 bitmapMaxY_x4 = _mm_set_ps1(bitmapMax.y);
 
-  //TODO: multiple light source
-  float lightMul = Max(Dot(-light.directionalLights[0].dir, faceNormal), 0.0f);
-  __m128 lightMulR_x4 = _mm_set_ps1((lightMul * light.directionalLights[0].diffuse.x) + light.directionalLights[0].ambient.x);
-  __m128 lightMulG_x4 = _mm_set_ps1((lightMul * light.directionalLights[0].diffuse.y) + light.directionalLights[0].ambient.y);
-  __m128 lightMulB_x4 = _mm_set_ps1((lightMul * light.directionalLights[0].diffuse.z) + light.directionalLights[0].ambient.z);
 
   for (float y = startY; y < endY; ++y)
   {
-    vertex startVert = GetPointInScreenRow(lineL, y);
-    vertex endVert = GetPointInScreenRow(lineR, y);
+    float tScrL = (y - scrLineL.origin.pos.y) / scrLineL.dir.pos.y;
+    float tScrR = (y - scrLineR.origin.pos.y) / scrLineR.dir.pos.y;
+    vertex startVert;
+    startVert.pos = scrLineL.origin.pos + (tScrL * scrLineL.dir.pos);
+    startVert.uv = scrLineL.origin.uv + (tScrL * scrLineL.dir.uv);
+    v3 startWorldVert = lineL.origin + (tScrL * lineL.dir);
+    vertex endVert;
+    endVert.pos = scrLineR.origin.pos + (tScrR * scrLineR.dir.pos);
+    endVert.uv = scrLineR.origin.uv + (tScrR * scrLineR.dir.uv);
+    v3 endWorldVert = lineR.origin + (tScrL * lineR.dir);
 
-    vertex startVertInCol = ShilfPointToNextCol(startVert, endVert - startVert);
+    __m128 worldStartX_x4 = _mm_set_ps1(startWorldVert.x);
+    __m128 worldStartY_x4 = _mm_set_ps1(startWorldVert.y);
+    __m128 worldStartZ_x4 = _mm_set_ps1(startWorldVert.z);
 
-    __m128 startX_x4 = _mm_set_ps1(startVertInCol.pos.x);
+    __m128 worldDeltaX_x4 = _mm_set_ps1(endWorldVert.x - startWorldVert.x);
+    __m128 worldDeltaY_x4 = _mm_set_ps1(endWorldVert.y - startWorldVert.y);
+    __m128 worldDeltaZ_x4 = _mm_set_ps1(endWorldVert.z - startWorldVert.z);
+
+    __m128 startX_x4 = _mm_set_ps1(startVert.pos.x);
     __m128 endX_x4 = _mm_set_ps1(endVert.pos.x);
 
-    __m128 startZ_x4 = _mm_set_ps1(startVertInCol.pos.z);
+    __m128 startZ_x4 = _mm_set_ps1(startVert.pos.z);
     __m128 endZ_x4 = _mm_set_ps1(endVert.pos.z);
 
-    __m128 uvStartXX_x4 = _mm_set_ps1(startVertInCol.uv.x);
-    __m128 uvStartXY_x4 = _mm_set_ps1(startVertInCol.uv.y);
+    __m128 uvStartXX_x4 = _mm_set_ps1(startVert.uv.x);
+    __m128 uvStartXY_x4 = _mm_set_ps1(startVert.uv.y);
 
     __m128 uvEndXX_x4 = _mm_set_ps1(endVert.uv.x);
     __m128 uvEndXY_x4 = _mm_set_ps1(endVert.uv.y);
 
-    float cStartX = Clamp(startVertInCol.pos.x, 0.0f, scrMax.x);
+    float cStartX = Clamp(startVert.pos.x, 0.0f, scrMax.x);
     float cEndX = Clamp(endVert.pos.x, 0.0f, scrMax.x);
 
     __m128 cEndX_x4 = _mm_set1_ps(cEndX);
@@ -535,6 +544,10 @@ void FillFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* c
       __m128 y_x4 = _mm_set_ps1(y);
 
       __m128 tUV_x4 = _mm_div_ps(_mm_sub_ps(x_x4, startX_x4), _mm_sub_ps(endX_x4, startX_x4));
+
+      __m128 worldX_x4 = _mm_add_ps(worldStartX_x4, _mm_mul_ps(tUV_x4, worldDeltaX_x4));
+      __m128 worldY_x4 = _mm_add_ps(worldStartY_x4, _mm_mul_ps(tUV_x4, worldDeltaY_x4));
+      __m128 worldZ_x4 = _mm_add_ps(worldStartZ_x4, _mm_mul_ps(tUV_x4, worldDeltaZ_x4));
 
       __m128 uvPosX_x4 = _mm_add_ps(uvStartXX_x4, _mm_mul_ps(tUV_x4, _mm_sub_ps(uvEndXX_x4, uvStartXX_x4)));
       __m128 uvPosY_x4 = _mm_add_ps(uvStartXY_x4, _mm_mul_ps(tUV_x4, _mm_sub_ps(uvEndXY_x4, uvStartXY_x4)));
@@ -643,9 +656,84 @@ void FillFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* c
       __m128 texelB_x4 = _mm_add_ps(sampleX1B, _mm_mul_ps(tX_x4, _mm_sub_ps(sampleX2B, sampleX1B)));
       __m128 texelA_x4 = _mm_add_ps(sampleX1A, _mm_mul_ps(tX_x4, _mm_sub_ps(sampleX2A, sampleX1A)));
 
-      texelR_x4 = _mm_mul_ps(texelR_x4, lightMulR_x4);
-      texelG_x4 = _mm_mul_ps(texelG_x4, lightMulG_x4);
-      texelB_x4 = _mm_mul_ps(texelB_x4, lightMulB_x4);
+      //NOTE: directional light
+      for (u32 i = 0; i < light.directionalLightsCount; ++i)
+      {
+        float lightMul = Max(Dot(-light.directionalLights[i].dir, faceNormal), 0.0f);
+
+        __m128 lightMulR_x4 = _mm_set_ps1((lightMul * light.directionalLights[i].diffuse.x) + light.directionalLights[i].ambient.x);
+        __m128 lightMulG_x4 = _mm_set_ps1((lightMul * light.directionalLights[i].diffuse.y) + light.directionalLights[i].ambient.y);
+        __m128 lightMulB_x4 = _mm_set_ps1((lightMul * light.directionalLights[i].diffuse.z) + light.directionalLights[i].ambient.z);
+
+        __m128 lightIntensity_x4 = _mm_set_ps1(light.directionalLights[i].intensity);
+
+        lightMulR_x4 = _mm_mul_ps(lightMulR_x4, lightIntensity_x4);
+        lightMulG_x4 = _mm_mul_ps(lightMulG_x4, lightIntensity_x4);
+        lightMulB_x4 = _mm_mul_ps(lightMulB_x4, lightIntensity_x4);
+
+        texelR_x4 = _mm_mul_ps(texelR_x4, lightMulR_x4);
+        texelG_x4 = _mm_mul_ps(texelG_x4, lightMulG_x4);
+        texelB_x4 = _mm_mul_ps(texelB_x4, lightMulB_x4);
+      }
+
+      for (u32 i = 0; i < light.pointLightsCount; ++i)
+      {
+        __m128 pointLightMulR_x4 = _mm_set_ps1(light.pointLights[i].diffuse.r);
+        __m128 pointLightMulG_x4 = _mm_set_ps1(light.pointLights[i].diffuse.g);
+        __m128 pointLightMulB_x4 = _mm_set_ps1(light.pointLights[i].diffuse.b);
+
+        __m128 lightX_x4 = _mm_set_ps1(light.pointLights[i].pos.x);
+        __m128 lightY_x4 = _mm_set_ps1(light.pointLights[i].pos.y);
+        __m128 lightZ_x4 = _mm_set_ps1(light.pointLights[i].pos.z);
+
+        __m128 toLightX_x4 = _mm_sub_ps(lightX_x4, worldX_x4);
+        __m128 toLightY_x4 = _mm_sub_ps(lightY_x4, worldY_x4);
+        __m128 toLightZ_x4 = _mm_sub_ps(lightZ_x4, worldZ_x4);
+
+        __m128 sqrToLightX_x4 = _mm_mul_ps(toLightX_x4, toLightX_x4);
+        __m128 sqrToLightY_x4 = _mm_mul_ps(toLightY_x4, toLightY_x4);
+        __m128 sqrToLightZ_x4 = _mm_mul_ps(toLightZ_x4, toLightZ_x4);
+
+        __m128 sqrLengthToLight_x4 = _mm_add_ps(_mm_add_ps(sqrToLightX_x4, sqrToLightY_x4), sqrToLightZ_x4);
+        __m128 lengthToLight_x4 = _mm_sqrt_ps(sqrLengthToLight_x4);
+
+        toLightX_x4 = _mm_div_ps(toLightX_x4, lengthToLight_x4);
+        toLightY_x4 = _mm_div_ps(toLightY_x4, lengthToLight_x4);
+        toLightZ_x4 = _mm_div_ps(toLightZ_x4, lengthToLight_x4);
+
+        __m128 faceNormalX_x4 = _mm_set_ps1(faceNormal.x);
+        __m128 faceNormalY_x4 = _mm_set_ps1(faceNormal.y);
+        __m128 faceNormalZ_x4 = _mm_set_ps1(faceNormal.z);
+
+        __m128 cosAngle_x4 = _mm_mul_ps(toLightX_x4, faceNormalX_x4);
+        cosAngle_x4 = _mm_add_ps(cosAngle_x4, _mm_mul_ps(toLightY_x4, faceNormalY_x4));
+        cosAngle_x4 = _mm_add_ps(cosAngle_x4, _mm_mul_ps(toLightZ_x4, faceNormalZ_x4));
+
+        cosAngle_x4 = _mm_max_ps(cosAngle_x4, zero_x4);
+        cosAngle_x4 = _mm_min_ps(cosAngle_x4, one_x4);
+
+        __m128 attenuation_x4 = _mm_mul_ps(sqrLengthToLight_x4, _mm_set_ps1(light.pointLights[i].attenuation.x));
+        attenuation_x4 = _mm_add_ps(attenuation_x4, _mm_mul_ps(lengthToLight_x4, _mm_set_ps1(light.pointLights[i].attenuation.y)));
+        attenuation_x4 = _mm_add_ps(attenuation_x4, _mm_set_ps1(light.pointLights[i].attenuation.z));
+
+        __m128 pointLightR_x4 = _mm_mul_ps(_mm_div_ps(one_x4, attenuation_x4), pointLightMulR_x4);
+        __m128 pointLightG_x4 = _mm_mul_ps(_mm_div_ps(one_x4, attenuation_x4), pointLightMulG_x4);
+        __m128 pointLightB_x4 = _mm_mul_ps(_mm_div_ps(one_x4, attenuation_x4), pointLightMulB_x4);
+
+        pointLightR_x4 = _mm_mul_ps(pointLightR_x4, cosAngle_x4);
+        pointLightG_x4 = _mm_mul_ps(pointLightG_x4, cosAngle_x4);
+        pointLightB_x4 = _mm_mul_ps(pointLightB_x4, cosAngle_x4);
+
+        __m128 lightIntensity_x4 = _mm_set_ps1(light.pointLights[i].intensity);
+
+        pointLightR_x4 = _mm_mul_ps(pointLightR_x4, lightIntensity_x4);
+        pointLightG_x4 = _mm_mul_ps(pointLightG_x4, lightIntensity_x4);
+        pointLightB_x4 = _mm_mul_ps(pointLightB_x4, lightIntensity_x4);
+
+        texelR_x4 = _mm_mul_ps(texelR_x4, pointLightR_x4);
+        texelG_x4 = _mm_mul_ps(texelG_x4, pointLightG_x4);
+        texelB_x4 = _mm_mul_ps(texelB_x4, pointLightB_x4);
+      }
 
       texelR_x4 = _mm_max_ps(texelR_x4, zero_x4);
       texelG_x4 = _mm_max_ps(texelG_x4, zero_x4);
@@ -714,8 +802,10 @@ struct fill_flat_quad_work
   light_config light;
   v3 faceNormal;
   v4 color;
-  vertex_line lineL;
-  vertex_line lineR;
+  vertex_line scrLineL;
+  vertex_line scrLineR;
+  line lineL;
+  line lineR;
   float startY;
   float endY;
 };
@@ -723,19 +813,26 @@ struct fill_flat_quad_work
 WORK_ENTRY_CALLBACK(FillFlatQuadTexWork)
 {
   fill_flat_quad_work* work = (fill_flat_quad_work*)data;
-  FillFlatQuadTex(work->drawBuffer, work->bitmap, work->cam, work->light, work->faceNormal, work->color, work->lineL, work->lineR, work->startY, work->endY);
+  FillFlatQuadTex(work->drawBuffer, work->bitmap, work->cam, work->light, work->faceNormal, work->color, work->scrLineL, work->scrLineR, work->lineL, work->lineR, work->startY, work->endY);
 }
 
-void DrawFlatQuadTex(platform_work_queue* queue, loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* cam, light_config light, flat_quad bound, v3 faceNormal, v4 color)
+void DrawFlatQuadTex(platform_work_queue* queue, loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* cam, light_config light, flat_quad bound, v3* worldBound, v3 faceNormal, v4 color)
 {
   v2 scrSize = V2(drawBuffer->width, drawBuffer->height);
 
-  vertex_line lineL;
-  lineL.origin = bound.p0;
-  lineL.dir = bound.p1 - bound.p0;
-  vertex_line lineR;
-  lineR.origin = bound.p2;
-  lineR.dir = bound.p3 - bound.p2;
+  vertex_line scrLineL;
+  scrLineL.origin = bound.p0;
+  scrLineL.dir = bound.p1 - bound.p0;
+  vertex_line scrLineR;
+  scrLineR.origin = bound.p2;
+  scrLineR.dir = bound.p3 - bound.p2;
+
+  line lineL;
+  lineL.origin = worldBound[0];
+  lineL.dir = worldBound[1] - worldBound[0];
+  line lineR;
+  lineR.origin = worldBound[2];
+  lineR.dir = worldBound[3] - worldBound[2];
 
   float minY = Max(bound.p0.pos.y, 0.0f);
   float maxY = Min(bound.p1.pos.y, scrSize.y);
@@ -748,14 +845,14 @@ void DrawFlatQuadTex(platform_work_queue* queue, loaded_bitmap* drawBuffer, load
     fill_flat_quad_work* work = workArr + i;
     float startY = Ceil(minY + ((float)i * stepY));
     float endY = Ceil(minY + ((float)(i + 1) * stepY));
-    *work = { drawBuffer, bitmap, cam, light, faceNormal, color, lineL, lineR , startY, endY };
+    *work = { drawBuffer, bitmap, cam, light, faceNormal, color, scrLineL, scrLineR, lineL, lineR, startY, endY };
 
     PlatformAddWorkEntry(queue, FillFlatQuadTexWork, work);
   }
   PlatformCompleteAllWork(queue);
 }
 
-void DrawTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera* cam, light_config light, triangle tri, v3 faceNormals, v4 color, loaded_bitmap* bitmap)
+void DrawTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera* cam, light_config light, triangle tri, v3* worldTri, v3 faceNormals, v4 color, loaded_bitmap* bitmap)
 {
   BEGIN_TIMER_BLOCK(DrawTriangle);
 
@@ -767,6 +864,7 @@ void DrawTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera*
       if (tri.p[i].pos.y > tri.p[j].pos.y)
       {
         Swap(&tri.p[i], &tri.p[j]);
+        Swap(&worldTri[i], &worldTri[j]);
       }
     }
   }
@@ -784,18 +882,23 @@ void DrawTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera*
   if (isnan(tScr)) return;
 
   v3 scrMiddle = Lerp(tri.p[0].pos, tri.p[2].pos, tScr);
+  v3 worldMiddle = Lerp(worldTri[0], worldTri[2], tScr);
   v2 uvMiddle = Lerp(tri.p[0].uv, tri.p[2].uv, tScr);
 
   v3 scrMiddleL;
+  v3 worldMiddleL;
   v2 uvMiddleL;
 
   v3 scrMiddleR;
+  v3 worldMiddleR;
   v2 uvMiddleR;
 
   if (scrMiddle.x < tri.p[1].pos.x)
   {
     scrMiddleL = scrMiddle;
     scrMiddleR = tri.p[1].pos;
+    worldMiddleL = worldMiddle;
+    worldMiddleR = worldTri[1];
 
     uvMiddleL = uvMiddle;
     uvMiddleR = tri.p[1].uv;
@@ -804,6 +907,8 @@ void DrawTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera*
   {
     scrMiddleL = tri.p[1].pos;
     scrMiddleR = scrMiddle;
+    worldMiddleL = worldTri[1];
+    worldMiddleR = worldMiddle;
 
     uvMiddleL = tri.p[1].uv;
     uvMiddleR = uvMiddle;
@@ -814,18 +919,27 @@ void DrawTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera*
   bound.p1 = { scrMiddleL, uvMiddleL };
   bound.p2 = tri.p0;
   bound.p3 = { scrMiddleR, uvMiddleR };
-  DrawFlatQuadTex(queue, drawBuffer, bitmap, cam, light, bound, faceNormals, color);
+  v3 worldBound[4];
+  worldBound[0] = worldTri[0];
+  worldBound[1] = worldMiddleL;
+  worldBound[2] = worldTri[0];
+  worldBound[3] = worldMiddleR;
+  DrawFlatQuadTex(queue, drawBuffer, bitmap, cam, light, bound, worldBound, faceNormals, color);
 
   bound.p0 = { scrMiddleL, uvMiddleL };
   bound.p1 = tri.p2;
   bound.p2 = { scrMiddleR, uvMiddleR };
   bound.p3 = tri.p2;
-  DrawFlatQuadTex(queue, drawBuffer, bitmap, cam, light, bound, faceNormals, color);
+  worldBound[0] = worldMiddleL;
+  worldBound[1] = worldTri[2];
+  worldBound[2] = worldMiddleR;
+  worldBound[3] = worldTri[2];
+  DrawFlatQuadTex(queue, drawBuffer, bitmap, cam, light, bound, worldBound, faceNormals, color);
 
   END_TIMER_BLOCK(DrawTriangle)
 }
 
-void ProcessTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera* cam, light_config light, triangle tri, v3 faceNormal, loaded_bitmap* texture, v4 color)
+void ProcessTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera* cam, light_config light, triangle tri, v3* worldTri, v3 faceNormal, loaded_bitmap* texture, v4 color)
 {
   for (int i = 0; i < ARRAY_COUNT(tri.p); ++i)
   {
@@ -834,8 +948,7 @@ void ProcessTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, came
 
     tri.p[i].pos = CameraPointToNDC(cam, tri.p[i].pos);
   }
-  DrawTriangle(queue, drawBuffer, cam, light, tri, faceNormal, color, texture);
-  DrawTriangle(queue, drawBuffer, cam, light, tri, faceNormal, color, texture);
+  DrawTriangle(queue, drawBuffer, cam, light, tri, worldTri, faceNormal, color, texture);
 }
 
 void Draw(platform_work_queue* queue, memory_arena* arena, loaded_bitmap* drawBuffer, light_config light, camera* cam, loaded_model* model, v4 color)
@@ -892,14 +1005,18 @@ void Draw(platform_work_queue* queue, memory_arena* arena, loaded_bitmap* drawBu
     for (u32 vertIndex = 0; vertIndex < vertCount; vertIndex += 3)
     {
       triangle viewTri;
+      v3 worldTri[3];
       v3 normals[3];
       u32 realI = vertIndex * iInVert;
+      worldTri[0] = worldP[indices[realI]];
       viewTri.p0.pos = viewP[indices[realI++]];
       if (uv != NULL) viewTri.p0.uv = uv[indices[realI++]];
       if (nor != NULL) normals[0] = nor[indices[realI++]];
+      worldTri[1] = worldP[indices[realI]];
       viewTri.p1.pos = viewP[indices[realI++]];
       if (uv != NULL) viewTri.p1.uv = uv[indices[realI++]];
       if (nor != NULL) normals[1] = nor[indices[realI++]];
+      worldTri[2] = worldP[indices[realI]];
       viewTri.p2.pos = viewP[indices[realI++]];
       if (uv != NULL) viewTri.p2.uv = uv[indices[realI++]];
       if (nor != NULL) normals[2] = nor[indices[realI++]];
@@ -927,7 +1044,7 @@ void Draw(platform_work_queue* queue, memory_arena* arena, loaded_bitmap* drawBu
       //NOTE: backface culling
       if (Dot(camNormal, viewTri.p0.pos) > 0)
       {
-        ProcessTriangle(queue, drawBuffer, cam, light, viewTri, worldNormals[vertIndex / 3], &texture, color);
+        ProcessTriangle(queue, drawBuffer, cam, light, viewTri, worldTri, worldNormals[vertIndex / 3], &texture, color);
       }
     }
     free(worldNormals);

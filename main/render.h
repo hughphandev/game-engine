@@ -51,6 +51,12 @@ struct vertex_line
   vertex dir;
 };
 
+struct line
+{
+  v3 origin;
+  v3 dir;
+};
+
 union flat_quad
 {
   //NOTE: assume p1, p2 has the same y in screen coordinate
@@ -67,14 +73,15 @@ struct directional_light
   v3 dir;
   v3 diffuse;
   v3 ambient;
+  float intensity;
 };
 
 struct point_light
 {
   v3 pos;
   v3 diffuse;
-  v3 ambient;
   v3 attenuation;
+  float intensity;
 };
 
 struct light_config

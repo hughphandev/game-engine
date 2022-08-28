@@ -91,6 +91,10 @@ union v3
     };
     float z;
   };
+  struct
+  {
+    float r, g, b;
+  };
   float e[3];
 
 
