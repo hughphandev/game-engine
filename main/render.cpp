@@ -479,7 +479,7 @@ vertex ShilfPointToNextCol(vertex origin, vertex dir)
   return result;
 }
 
-void FillFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* cam, directional_light light, v3 faceNormal, v4 color, vertex_line lineL, vertex_line lineR, float startY, float endY)
+void FillFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* cam, light_config light, v3 faceNormal, v4 color, vertex_line lineL, vertex_line lineR, float startY, float endY)
 {
   v2 scrSize = V2(drawBuffer->width, drawBuffer->height);
   v2 bitmapMax = V2(bitmap->width - 1, bitmap->height - 1);
@@ -498,10 +498,11 @@ void FillFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* c
   __m128 bitmapMaxX_x4 = _mm_set_ps1(bitmapMax.x);
   __m128 bitmapMaxY_x4 = _mm_set_ps1(bitmapMax.y);
 
-  float lightMul = Max(Dot(-light.dir, faceNormal), 0.0f);
-  __m128 lightMulR_x4 = _mm_set_ps1((lightMul * light.diffuse.x) + light.ambient.x);
-  __m128 lightMulG_x4 = _mm_set_ps1((lightMul * light.diffuse.y) + light.ambient.y);
-  __m128 lightMulB_x4 = _mm_set_ps1((lightMul * light.diffuse.z) + light.ambient.z);
+  //TODO: multiple light source
+  float lightMul = Max(Dot(-light.directionalLights[0].dir, faceNormal), 0.0f);
+  __m128 lightMulR_x4 = _mm_set_ps1((lightMul * light.directionalLights[0].diffuse.x) + light.directionalLights[0].ambient.x);
+  __m128 lightMulG_x4 = _mm_set_ps1((lightMul * light.directionalLights[0].diffuse.y) + light.directionalLights[0].ambient.y);
+  __m128 lightMulB_x4 = _mm_set_ps1((lightMul * light.directionalLights[0].diffuse.z) + light.directionalLights[0].ambient.z);
 
   for (float y = startY; y < endY; ++y)
   {
@@ -710,7 +711,7 @@ struct fill_flat_quad_work
   loaded_bitmap* drawBuffer;
   loaded_bitmap* bitmap;
   camera* cam;
-  directional_light light;
+  light_config light;
   v3 faceNormal;
   v4 color;
   vertex_line lineL;
@@ -725,7 +726,7 @@ WORK_ENTRY_CALLBACK(FillFlatQuadTexWork)
   FillFlatQuadTex(work->drawBuffer, work->bitmap, work->cam, work->light, work->faceNormal, work->color, work->lineL, work->lineR, work->startY, work->endY);
 }
 
-void DrawFlatQuadTex(platform_work_queue* queue, loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* cam, directional_light light, flat_quad bound, v3 faceNormal, v4 color)
+void DrawFlatQuadTex(platform_work_queue* queue, loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* cam, light_config light, flat_quad bound, v3 faceNormal, v4 color)
 {
   v2 scrSize = V2(drawBuffer->width, drawBuffer->height);
 
@@ -754,7 +755,7 @@ void DrawFlatQuadTex(platform_work_queue* queue, loaded_bitmap* drawBuffer, load
   PlatformCompleteAllWork(queue);
 }
 
-void DrawTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera* cam, directional_light light, triangle tri, v3 faceNormals, v4 color, loaded_bitmap* bitmap)
+void DrawTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera* cam, light_config light, triangle tri, v3 faceNormals, v4 color, loaded_bitmap* bitmap)
 {
   BEGIN_TIMER_BLOCK(DrawTriangle);
 
@@ -824,7 +825,7 @@ void DrawTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera*
   END_TIMER_BLOCK(DrawTriangle)
 }
 
-void ProcessTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera* cam, directional_light light, triangle tri, v3 faceNormal, loaded_bitmap* texture, v4 color)
+void ProcessTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera* cam, light_config light, triangle tri, v3 faceNormal, loaded_bitmap* texture, v4 color)
 {
   for (int i = 0; i < ARRAY_COUNT(tri.p); ++i)
   {
@@ -837,11 +838,12 @@ void ProcessTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, came
   DrawTriangle(queue, drawBuffer, cam, light, tri, faceNormal, color, texture);
 }
 
-void Draw(platform_work_queue* queue, loaded_bitmap* drawBuffer, directional_light light, camera* cam, loaded_model* model, v4 color)
+void Draw(platform_work_queue* queue, memory_arena* arena, loaded_bitmap* drawBuffer, light_config light, camera* cam, loaded_model* model, v4 color)
 {
   v2* uv = model->texCoords;
-  v3* pos = model->positions;
   v3* nor = model->normals;
+  v3* worldP = model->positions;
+  v3* viewP = PUSH_ARRAY(arena, v3, model->posCount);
 
   u32 iInVert = model->iInVert;
   for (u32 i = 0; i < model->groupCount; ++i)
@@ -857,13 +859,13 @@ void Draw(platform_work_queue* queue, loaded_bitmap* drawBuffer, directional_lig
       triangle tri;
       v3 normals[3];
       u32 realI = vertIndex * iInVert;
-      tri.p0.pos = pos[indices[realI++]];
+      tri.p0.pos = worldP[indices[realI++]];
       if (uv != NULL) tri.p0.uv = uv[indices[realI++]];
       if (nor != NULL) normals[0] = nor[indices[realI++]];
-      tri.p1.pos = pos[indices[realI++]];
+      tri.p1.pos = worldP[indices[realI++]];
       if (uv != NULL) tri.p1.uv = uv[indices[realI++]];
       if (nor != NULL) normals[1] = nor[indices[realI++]];
-      tri.p2.pos = pos[indices[realI++]];
+      tri.p2.pos = worldP[indices[realI++]];
       if (uv != NULL) tri.p2.uv = uv[indices[realI++]];
       if (nor != NULL) normals[2] = nor[indices[realI++]];
 
@@ -880,7 +882,7 @@ void Draw(platform_work_queue* queue, loaded_bitmap* drawBuffer, directional_lig
     for (u32 vertIndex = 0; vertIndex < model->posCount; ++vertIndex)
     {
       //NOTE: vertex shader
-      pos[vertIndex] = WorldPointToCamera(cam, pos[vertIndex]);
+      viewP[vertIndex] = WorldPointToCamera(cam, worldP[vertIndex]);
 
       // char buf[256];
       // _snprintf_s(buf, sizeof(buf), "vertex%i: pos=%f, %f, %f", i, ver[i].pos.x, ver[i].pos.y, ver[i].pos.z);
@@ -889,23 +891,23 @@ void Draw(platform_work_queue* queue, loaded_bitmap* drawBuffer, directional_lig
 
     for (u32 vertIndex = 0; vertIndex < vertCount; vertIndex += 3)
     {
-      triangle tri;
+      triangle viewTri;
       v3 normals[3];
       u32 realI = vertIndex * iInVert;
-      tri.p0.pos = pos[indices[realI++]];
-      if (uv != NULL) tri.p0.uv = uv[indices[realI++]];
+      viewTri.p0.pos = viewP[indices[realI++]];
+      if (uv != NULL) viewTri.p0.uv = uv[indices[realI++]];
       if (nor != NULL) normals[0] = nor[indices[realI++]];
-      tri.p1.pos = pos[indices[realI++]];
-      if (uv != NULL) tri.p1.uv = uv[indices[realI++]];
+      viewTri.p1.pos = viewP[indices[realI++]];
+      if (uv != NULL) viewTri.p1.uv = uv[indices[realI++]];
       if (nor != NULL) normals[1] = nor[indices[realI++]];
-      tri.p2.pos = pos[indices[realI++]];
-      if (uv != NULL) tri.p2.uv = uv[indices[realI++]];
+      viewTri.p2.pos = viewP[indices[realI++]];
+      if (uv != NULL) viewTri.p2.uv = uv[indices[realI++]];
       if (nor != NULL) normals[2] = nor[indices[realI++]];
 
       v3 camNormal;
       if (nor == NULL)
       {
-        camNormal = Cross(tri.p1.pos - tri.p0.pos, tri.p2.pos - tri.p0.pos);
+        camNormal = Cross(viewTri.p1.pos - viewTri.p0.pos, viewTri.p2.pos - viewTri.p0.pos);
       }
       else
       {
@@ -923,9 +925,9 @@ void Draw(platform_work_queue* queue, loaded_bitmap* drawBuffer, directional_lig
       }
 
       //NOTE: backface culling
-      if (Dot(camNormal, tri.p0.pos) > 0)
+      if (Dot(camNormal, viewTri.p0.pos) > 0)
       {
-        ProcessTriangle(queue, drawBuffer, cam, light, tri, worldNormals[vertIndex / 3], &texture, color);
+        ProcessTriangle(queue, drawBuffer, cam, light, viewTri, worldNormals[vertIndex / 3], &texture, color);
       }
     }
     free(worldNormals);
@@ -1135,7 +1137,7 @@ inline void DrawBitmap(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, v2 minP
   }
 }
 
-static void RenderGroupOutput(platform_work_queue* queue, render_group* renderGroup, loaded_bitmap* drawBuffer)
+static void RenderGroupOutput(platform_work_queue* queue, memory_arena* arena, render_group* renderGroup, loaded_bitmap* drawBuffer)
 {
   BEGIN_TIMER_BLOCK(RenderGroupOutput);
 
@@ -1192,7 +1194,7 @@ static void RenderGroupOutput(platform_work_queue* queue, render_group* renderGr
         render_entry_model* entry = (render_entry_model*)((u8*)renderGroup->pushBuffer.base + index);
         index += sizeof(*entry);
 
-        Draw(queue, drawBuffer, entry->light, renderGroup->cam, entry->model, entry->col);
+        Draw(queue, arena, drawBuffer, entry->light, renderGroup->cam, entry->model, entry->col);
       } break;
 
       // INVALID_DEFAULT_CASE;
@@ -1289,7 +1291,7 @@ inline render_entry_rectangle_outline* PushRectOutline(render_group* renderGroup
   return entry;
 }
 
-inline render_entry_model* RenderModel(render_group* renderGroup, directional_light light, loaded_model* model, v4 col, loaded_bitmap* bitmap)
+inline render_entry_model* RenderModel(render_group* renderGroup, light_config light, loaded_model* model, v4 col, loaded_bitmap* bitmap)
 {
   render_entry_model* entry = PUSH_RENDER_ELEMENT(renderGroup, render_entry_model);
   if (entry)

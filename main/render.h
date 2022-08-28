@@ -69,6 +69,22 @@ struct directional_light
   v3 ambient;
 };
 
+struct point_light
+{
+  v3 pos;
+  v3 diffuse;
+  v3 ambient;
+  v3 attenuation;
+};
+
+struct light_config
+{
+  directional_light* directionalLights;
+  u32 directionalLightsCount;
+  point_light* pointLights;
+  u32 pointLightsCount;
+};
+
 enum render_entry_type
 {
   RENDER_TYPE_render_entry_clear,
@@ -97,7 +113,7 @@ struct render_entry_saturation
 struct render_entry_model
 {
   loaded_model* model;
-  directional_light light;
+  light_config light;
 
   v4 col;
   loaded_bitmap* bitmap;

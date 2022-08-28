@@ -506,10 +506,13 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   // }
 
   v4 col = V4(1.0f, 1.0f, 1.0f, 1.0f);
-  directional_light light = {};
-  light.dir = { 0.0f, -1.0f, 0.0f };
-  light.diffuse = { 1.0f, 1.0f, 1.0f };
-  light.ambient = 0.1f * light.diffuse;
+  directional_light sunLight = {};
+  sunLight.dir = { 0.0f, -1.0f, 0.0f };
+  sunLight.diffuse = { 1.0f, 1.0f, 1.0f };
+  sunLight.ambient = 0.1f * sunLight.diffuse;
+  light_config light = {};
+  light.directionalLights = &sunLight;
+  light.directionalLightsCount = 1;
   loaded_model cube = DEBUGLoadObj(&tranState.tranArena, memory->fileIO, "cube.obj");
 
   for (u32 i = 0; i < cube.posCount; ++i)
@@ -526,7 +529,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
   gameState->time += input.dt;
 
-  RenderGroupOutput(memory->workQueue, renderGroup, &drawBuffer);
+  RenderGroupOutput(memory->workQueue, &tranState.tranArena, renderGroup, &drawBuffer);
 
   if (input.f3.isDown && input.f3.halfTransitionCount == 1)
   {
