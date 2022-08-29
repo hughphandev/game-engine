@@ -656,6 +656,10 @@ void FillFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* c
       __m128 texelB_x4 = _mm_add_ps(sampleX1B, _mm_mul_ps(tX_x4, _mm_sub_ps(sampleX2B, sampleX1B)));
       __m128 texelA_x4 = _mm_add_ps(sampleX1A, _mm_mul_ps(tX_x4, _mm_sub_ps(sampleX2A, sampleX1A)));
 
+      __m128 lightR_x4 = zero_x4;
+      __m128 lightG_x4 = zero_x4;
+      __m128 lightB_x4 = zero_x4;
+
       //NOTE: directional light
       for (u32 i = 0; i < light.directionalLightsCount; ++i)
       {
@@ -671,24 +675,26 @@ void FillFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* c
         lightMulG_x4 = _mm_mul_ps(lightMulG_x4, lightIntensity_x4);
         lightMulB_x4 = _mm_mul_ps(lightMulB_x4, lightIntensity_x4);
 
-        texelR_x4 = _mm_mul_ps(texelR_x4, lightMulR_x4);
-        texelG_x4 = _mm_mul_ps(texelG_x4, lightMulG_x4);
-        texelB_x4 = _mm_mul_ps(texelB_x4, lightMulB_x4);
+        lightR_x4 = _mm_add_ps(lightMulR_x4, lightR_x4);
+        lightG_x4 = _mm_add_ps(lightMulG_x4, lightG_x4);
+        lightB_x4 = _mm_add_ps(lightMulB_x4, lightB_x4);
+
       }
 
+      //NOTE: point light
       for (u32 i = 0; i < light.pointLightsCount; ++i)
       {
-        __m128 pointLightMulR_x4 = _mm_set_ps1(light.pointLights[i].diffuse.r);
-        __m128 pointLightMulG_x4 = _mm_set_ps1(light.pointLights[i].diffuse.g);
-        __m128 pointLightMulB_x4 = _mm_set_ps1(light.pointLights[i].diffuse.b);
+        __m128 lightMulR_x4 = _mm_set_ps1(light.pointLights[i].diffuse.r);
+        __m128 lightMulG_x4 = _mm_set_ps1(light.pointLights[i].diffuse.g);
+        __m128 lightMulB_x4 = _mm_set_ps1(light.pointLights[i].diffuse.b);
 
-        __m128 lightX_x4 = _mm_set_ps1(light.pointLights[i].pos.x);
-        __m128 lightY_x4 = _mm_set_ps1(light.pointLights[i].pos.y);
-        __m128 lightZ_x4 = _mm_set_ps1(light.pointLights[i].pos.z);
+        __m128 lightPosX_x4 = _mm_set_ps1(light.pointLights[i].pos.x);
+        __m128 lightPosY_x4 = _mm_set_ps1(light.pointLights[i].pos.y);
+        __m128 lightPosZ_x4 = _mm_set_ps1(light.pointLights[i].pos.z);
 
-        __m128 toLightX_x4 = _mm_sub_ps(lightX_x4, worldX_x4);
-        __m128 toLightY_x4 = _mm_sub_ps(lightY_x4, worldY_x4);
-        __m128 toLightZ_x4 = _mm_sub_ps(lightZ_x4, worldZ_x4);
+        __m128 toLightX_x4 = _mm_sub_ps(lightPosX_x4, worldX_x4);
+        __m128 toLightY_x4 = _mm_sub_ps(lightPosY_x4, worldY_x4);
+        __m128 toLightZ_x4 = _mm_sub_ps(lightPosZ_x4, worldZ_x4);
 
         __m128 sqrToLightX_x4 = _mm_mul_ps(toLightX_x4, toLightX_x4);
         __m128 sqrToLightY_x4 = _mm_mul_ps(toLightY_x4, toLightY_x4);
@@ -716,9 +722,9 @@ void FillFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* c
         attenuation_x4 = _mm_add_ps(attenuation_x4, _mm_mul_ps(lengthToLight_x4, _mm_set_ps1(light.pointLights[i].attenuation.y)));
         attenuation_x4 = _mm_add_ps(attenuation_x4, _mm_set_ps1(light.pointLights[i].attenuation.z));
 
-        __m128 pointLightR_x4 = _mm_mul_ps(_mm_div_ps(one_x4, attenuation_x4), pointLightMulR_x4);
-        __m128 pointLightG_x4 = _mm_mul_ps(_mm_div_ps(one_x4, attenuation_x4), pointLightMulG_x4);
-        __m128 pointLightB_x4 = _mm_mul_ps(_mm_div_ps(one_x4, attenuation_x4), pointLightMulB_x4);
+        __m128 pointLightR_x4 = _mm_mul_ps(_mm_div_ps(one_x4, attenuation_x4), lightMulR_x4);
+        __m128 pointLightG_x4 = _mm_mul_ps(_mm_div_ps(one_x4, attenuation_x4), lightMulG_x4);
+        __m128 pointLightB_x4 = _mm_mul_ps(_mm_div_ps(one_x4, attenuation_x4), lightMulB_x4);
 
         pointLightR_x4 = _mm_mul_ps(pointLightR_x4, cosAngle_x4);
         pointLightG_x4 = _mm_mul_ps(pointLightG_x4, cosAngle_x4);
@@ -730,10 +736,14 @@ void FillFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* c
         pointLightG_x4 = _mm_mul_ps(pointLightG_x4, lightIntensity_x4);
         pointLightB_x4 = _mm_mul_ps(pointLightB_x4, lightIntensity_x4);
 
-        texelR_x4 = _mm_mul_ps(texelR_x4, pointLightR_x4);
-        texelG_x4 = _mm_mul_ps(texelG_x4, pointLightG_x4);
-        texelB_x4 = _mm_mul_ps(texelB_x4, pointLightB_x4);
+        lightR_x4 = _mm_add_ps(lightR_x4, pointLightR_x4) ;
+        lightG_x4 = _mm_add_ps(lightG_x4, pointLightG_x4) ;
+        lightB_x4 = _mm_add_ps(lightB_x4, pointLightB_x4) ;
       }
+
+      texelR_x4 = _mm_mul_ps(texelR_x4, lightR_x4);
+      texelG_x4 = _mm_mul_ps(texelG_x4, lightG_x4);
+      texelB_x4 = _mm_mul_ps(texelB_x4, lightB_x4);
 
       texelR_x4 = _mm_max_ps(texelR_x4, zero_x4);
       texelG_x4 = _mm_max_ps(texelG_x4, zero_x4);

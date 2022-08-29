@@ -510,7 +510,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   sunLight.dir = { 0.0f, -1.0f, 0.0f };
   sunLight.diffuse = { 1.0f, 1.0f, 1.0f };
   sunLight.intensity = 2.0f;
-  sunLight.ambient = 0.1f * sunLight.diffuse;
+  sunLight.ambient = 0.05f * sunLight.diffuse;
 
   point_light pointLight = {};
   pointLight.pos = { 0.0f, 0.0f, -2.0f };
@@ -520,8 +520,8 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   light_config light = {};
   light.pointLights = &pointLight;
   light.pointLightsCount = 1;
-  // light.directionalLights = &sunLight;
-  // light.directionalLightsCount = 1;
+  light.directionalLights = &sunLight;
+  light.directionalLightsCount = 1;
   loaded_model cube = DEBUGLoadObj(&tranState.tranArena, memory->fileIO, "cube.obj");
 
   for (u32 i = 0; i < cube.posCount; ++i)
