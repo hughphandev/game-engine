@@ -1,4 +1,2 @@
 build/
 .vscode/
-*.obj
-*.pdb

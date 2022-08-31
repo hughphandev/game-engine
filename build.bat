@@ -14,6 +14,8 @@ set OBJDIR=%BUILDDIR%obj\
 
 set DATETIME=%date:~-4,4%%date:~-10,2%%date:~-7,2%_%time:~1,1%%time:~3,2%%time:~6,2%
 
+mkdir %OBJDIR% 2> NUL
+
 REM Clean up	
    del %BUILDDIR%*.pdb
 
