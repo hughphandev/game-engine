@@ -15,7 +15,11 @@ An experimental game engine for educational purposes!
 - Lighting: Basic directional lighting
 
 ## Features TODO
-- Shading
+- Hardware Acceleration
 - Font Rendering
 - 3D AABB collision detection
-- Hardware Acceleration
+
+# How to install
+## Windows
+- Run build.bat.
+- Run build/game.exe to start.
