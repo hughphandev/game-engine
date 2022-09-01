@@ -4,6 +4,7 @@
 #include <xinput.h>
 #include <dsound.h>
 #include <stdio.h>
+#include <gl\gl.h>
 
 
 #include <math.h>
@@ -201,6 +202,7 @@ static void Win32ResizeDIBSection(win32_offscreen_buffer* buffer, int width, int
 
 static void Win32BufferToWindow(HDC deviceContext, win32_offscreen_buffer* buffer, int windowWidth, int windowHeight)
 {
+#if 0
   //Note: not stretching for debug purpose!
   //TODO: switch to aspect ratio in the future!
 
@@ -208,9 +210,45 @@ static void Win32BufferToWindow(HDC deviceContext, win32_offscreen_buffer* buffe
   buffer->offSet.y = 0.5f * (float)(windowHeight - buffer->height);
 
   StretchDIBits(deviceContext, (int)buffer->offSet.x, (int)buffer->offSet.y, buffer->width, buffer->height, 0, 0, buffer->width, buffer->height, buffer->memory, &buffer->info, DIB_RGB_COLORS, SRCCOPY);
+#endif
+  glViewport(0, 0, windowWidth, windowHeight);
+  glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
+  glClear(GL_COLOR_BUFFER_BIT);
+  SwapBuffers(deviceContext);
 }
 
-void Win32InitDSound(HWND window, int32_t samplesPerSecond, int32_t bufferSize)
+static void Win32InitOpenGL(HWND window)
+{
+  HDC windowDC = GetDC(window);
+
+  //NOTE: MSDN say that the cColorBits is excluding the cAlphaBits but it seem like it is not the case here.
+  PIXELFORMATDESCRIPTOR desiredPixelFormat = {};
+  desiredPixelFormat.nSize = sizeof(desiredPixelFormat);
+  desiredPixelFormat.nVersion = 1;
+  desiredPixelFormat.dwFlags = PFD_SUPPORT_OPENGL | PFD_DRAW_TO_WINDOW | PFD_DOUBLEBUFFER;
+  desiredPixelFormat.cColorBits = 32;
+  desiredPixelFormat.cAlphaBits = 8;
+
+  int suggestedPixelFormatIndex = ChoosePixelFormat(windowDC, &desiredPixelFormat);
+  PIXELFORMATDESCRIPTOR suggestedPixelFormat;
+  DescribePixelFormat(windowDC, suggestedPixelFormatIndex, sizeof(suggestedPixelFormat), &suggestedPixelFormat);
+  SetPixelFormat(windowDC, suggestedPixelFormatIndex, &suggestedPixelFormat);
+
+  HGLRC openGLRC = wglCreateContext(windowDC);
+  if (wglMakeCurrent(windowDC, openGLRC))
+  {
+    //NOTE: success!!!
+
+  }
+  else
+  {
+    //TODO: Diagnostic
+    INVALID_CODE_PATH;
+  }
+  ReleaseDC(window, windowDC);
+}
+
+static void Win32InitDSound(HWND window, int32_t samplesPerSecond, int32_t bufferSize)
 {
   HMODULE dSoundLibrary = LoadLibraryA("dsound.dll");
   if (dSoundLibrary)
@@ -948,6 +986,8 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, 
     if (window)
     {
       g_running = true;
+
+      Win32InitOpenGL(window);
 
       int monitorRefreshHz = 60;
       HDC refreshDC = GetDC(window);

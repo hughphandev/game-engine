@@ -21,5 +21,6 @@ An experimental game engine for educational purposes!
 
 # How to install
 ## Windows
-- Run build.bat.
+- Install MSVC compiler.
+- Run build.bat with the "x64 Native Tools Command Prompt..." (can be found in Windows Search).
 - Run build/game.exe to start.
