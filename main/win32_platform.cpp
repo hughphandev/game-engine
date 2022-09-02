@@ -20,6 +20,7 @@ static bool g_pause;
 static bool g_audioSyncDisplay;
 static win32_offscreen_buffer g_backBuffer;
 static LPDIRECTSOUNDBUFFER g_secondaryBuffer;
+static GLuint g_openGLBlitTexture;
 static HCURSOR g_Cursor;
 static bool g_IsCursorDisplay;
 static WINDOWPLACEMENT g_wpPrev = { sizeof(g_wpPrev) };
@@ -214,6 +215,42 @@ static void Win32BufferToWindow(HDC deviceContext, win32_offscreen_buffer* buffe
   glViewport(0, 0, windowWidth, windowHeight);
   glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
   glClear(GL_COLOR_BUFFER_BIT);
+
+  glBindTexture(GL_TEXTURE_2D, g_openGLBlitTexture);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, buffer->width, buffer->height, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, buffer->memory);
+
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+  glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+
+  glEnable(GL_TEXTURE_2D);
+
+  glMatrixMode(GL_MODELVIEW);
+  glLoadIdentity();
+  glMatrixMode(GL_PROJECTION);
+  glLoadIdentity();
+  glMatrixMode(GL_TEXTURE);
+  glLoadIdentity();
+
+  glBegin(GL_TRIANGLES);
+  float p = 1.0f;
+  glTexCoord2f(0.0f, 0.0f);
+  glVertex2f(-p, -p);
+  glTexCoord2f(1.0f, 0.0f);
+  glVertex2f(p, -p);
+  glTexCoord2f(1.0f, 1.0f);
+  glVertex2f(p, p);
+
+  glTexCoord2f(0.0f, 0.0f);
+  glVertex2f(-p, -p);
+  glTexCoord2f(1.0f, 1.0f);
+  glVertex2f(p, p);
+  glTexCoord2f(0.0f, 1.0f);
+  glVertex2f(-p, p);
+  glEnd();
+
   SwapBuffers(deviceContext);
 }
 
@@ -238,7 +275,7 @@ static void Win32InitOpenGL(HWND window)
   if (wglMakeCurrent(windowDC, openGLRC))
   {
     //NOTE: success!!!
-
+    glGenTextures(1, &g_openGLBlitTexture);
   }
   else
   {
