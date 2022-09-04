@@ -17,11 +17,11 @@ inline char* ReadUntil(memory_arena* arena, char* input, char terminator)
   return result;
 }
 
-inline loaded_bitmap DEBUGLoadBMP(memory_arena* arena, file_io fileIO, char* fileName)
+inline loaded_bitmap DEBUGLoadBMP(memory_arena* arena, platform_api fileIO, char* fileName)
 {
   loaded_bitmap result = {};
 
-  debug_read_file_result file = fileIO.Read(fileName);
+  debug_read_file_result file = fileIO.ReadFile(fileName);
   if (file.contentSize > 0)
   {
     bmp_header* header = (bmp_header*)file.contents;
@@ -66,12 +66,12 @@ inline loaded_bitmap DEBUGLoadBMP(memory_arena* arena, file_io fileIO, char* fil
         ++index;
       }
     }
-    fileIO.Free(file.contents);
+    fileIO.FreeFile(file.contents);
   }
   return result;
 }
 
-inline loaded_bitmap LoadImageToArena(memory_arena* arena, file_io fileIO, char* fileName)
+inline loaded_bitmap LoadImageToArena(memory_arena* arena, platform_api fileIO, char* fileName)
 {
   loaded_bitmap result = {};
   int channel;
@@ -119,10 +119,10 @@ void* GetChunkData(riff_chunk* chunk)
   return chunk + 1;
 }
 
-inline loaded_sound DEBUGLoadWAV(memory_arena* arena, file_io fileIO, char* fileName)
+inline loaded_sound DEBUGLoadWAV(memory_arena* arena, platform_api fileIO, char* fileName)
 {
   loaded_sound result = {};
-  debug_read_file_result file = fileIO.Read(fileName);
+  debug_read_file_result file = fileIO.ReadFile(fileName);
   if (file.contentSize > 0)
   {
     wav_header* header = (wav_header*)file.contents;
@@ -160,17 +160,17 @@ inline loaded_sound DEBUGLoadWAV(memory_arena* arena, file_io fileIO, char* file
     result.mem = PUSH_SIZE(arena, dataSize);
     memcpy(result.mem, data, dataSize);
   }
-  fileIO.Free(file.contents);
+  fileIO.FreeFile(file.contents);
   return result;
 }
 
 
 
-inline loaded_mtl DEBUGLoadMTL(memory_arena* arena, file_io fileIO, char* fileName)
+inline loaded_mtl DEBUGLoadMTL(memory_arena* arena, platform_api fileIO, char* fileName)
 {
   loaded_mtl result = {};
   //TODO: load mtl file
-  debug_read_file_result file = fileIO.Read(fileName);
+  debug_read_file_result file = fileIO.ReadFile(fileName);
   if (file.contentSize > 0)
   {
     char* fileEnd = (char*)file.contents + file.contentSize;
@@ -295,15 +295,15 @@ inline loaded_mtl DEBUGLoadMTL(memory_arena* arena, file_io fileIO, char* fileNa
       }
     }
   }
-  fileIO.Free(file.contents);
+  fileIO.FreeFile(file.contents);
   return result;
 }
 
-inline loaded_model DEBUGLoadObj(memory_arena* arena, file_io fileIO, char* fileName)
+inline loaded_model DEBUGLoadObj(memory_arena* arena, platform_api fileIO, char* fileName)
 {
   loaded_model result = {};
 
-  debug_read_file_result file = fileIO.Read(fileName);
+  debug_read_file_result file = fileIO.ReadFile(fileName);
   if (file.contentSize > 0)
   {
     char* fileEnd = (char*)file.contents + file.contentSize;
@@ -447,7 +447,7 @@ inline loaded_model DEBUGLoadObj(memory_arena* arena, file_io fileIO, char* file
       }
     }
   }
-  fileIO.Free(file.contents);
+  fileIO.FreeFile(file.contents);
   return result;
 }
 

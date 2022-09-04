@@ -10,35 +10,6 @@
 #include <string.h>
 #include <stdlib.h>
 
-#if INTERNAL
-struct debug_read_file_result
-{
-  void* contents;
-  u32 contentSize;
-};
-
-#define DEBUG_PLATFORM_READ_FILE(name) debug_read_file_result name(char* fileName)
-typedef DEBUG_PLATFORM_READ_FILE(debug_platform_read_file);
-
-#define DEBUG_PLATFORM_FREE_MEMORY(name)void name (void* memory) 
-typedef DEBUG_PLATFORM_FREE_MEMORY(debug_platform_free_memory);
-
-#define DEBUG_PLATFORM_WRITE_FILE(name) bool name(char* fileName, size_t memorySize, void* memory) 
-typedef DEBUG_PLATFORM_WRITE_FILE(debug_platform_write_file);
-
-DEBUG_PLATFORM_READ_FILE(DEBUGPlatformReadFile);
-DEBUG_PLATFORM_FREE_MEMORY(DEBUGPlatformFreeMemory);
-DEBUG_PLATFORM_WRITE_FILE(DEBUGPlatformWriteFile);
-
-struct file_io
-{
-    debug_platform_read_file* Read;
-    debug_platform_write_file* Write;
-    debug_platform_free_memory* Free;
-};
-
-#endif
-
 #define BITMAP_PIXEL_SIZE (sizeof(u32))
 struct loaded_bitmap
 {
@@ -159,8 +130,6 @@ struct wav_fmt
   char subFormat[16];
 };
 #pragma pack(pop)
-
-
 
 #define RIFF_CODE(a, b, c, d) (((u32)(a) << 0) | ((u32)(b) << 8) | ((u32)(c) << 16) | ((u32)(d) << 24)) 
 enum

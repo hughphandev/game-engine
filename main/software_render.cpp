@@ -1,5 +1,5 @@
-#ifndef RENDER_CPP
-#define RENDER_CPP
+#ifndef SOFTWARE_RENDER_CPP
+#define SOFTWARE_RENDER_CPP
 
 #include "render.h"
 #include "math.cpp"
@@ -8,7 +8,6 @@
 #include "windows.h"
 #include "stdio.h"
 #endif
-
 
 v4 SRGB1ToLinear1(v4 col)
 {
@@ -305,7 +304,7 @@ v3 Rotate(v3 vec, v3 rotation)
   return result.xyz;
 }
 
-mat4 GetPerspectiveMatrix(camera* cam)
+mat4 GetProjectionMatrix(camera* cam)
 {
   float a = cam->size.x / cam->size.y;
   float s = 1 / Tan(0.5f * cam->rFov);
@@ -375,7 +374,7 @@ inline v3 WorldPointToCamera(camera* cam, v3 point)
 inline v3 CameraPointToNDC(camera* cam, v3 point)
 {
   //NOTE: transform from camera coordinate to NDC
-  mat4 proj = GetPerspectiveMatrix(cam);
+  mat4 proj = GetProjectionMatrix(cam);
 
   v4 homoPoint = proj * V4(point, 1);
   homoPoint.xyz /= homoPoint.w;
@@ -391,7 +390,7 @@ inline v2 NDCPointToScreen(camera* cam, v3 point)
 
 inline v2 WorldPointToScreen(camera* cam, v3 point)
 {
-  v3 ndc = WorldPointToCamera(cam, point);
+  v3 ndc = CameraPointToNDC(cam, WorldPointToCamera(cam, point));
   v2 result = NDCPointToScreen(cam, ndc);
 
   return result;
@@ -736,9 +735,9 @@ void FillFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* c
         pointLightG_x4 = _mm_mul_ps(pointLightG_x4, lightIntensity_x4);
         pointLightB_x4 = _mm_mul_ps(pointLightB_x4, lightIntensity_x4);
 
-        lightR_x4 = _mm_add_ps(lightR_x4, pointLightR_x4) ;
-        lightG_x4 = _mm_add_ps(lightG_x4, pointLightG_x4) ;
-        lightB_x4 = _mm_add_ps(lightB_x4, pointLightB_x4) ;
+        lightR_x4 = _mm_add_ps(lightR_x4, pointLightR_x4);
+        lightG_x4 = _mm_add_ps(lightG_x4, pointLightG_x4);
+        lightB_x4 = _mm_add_ps(lightB_x4, pointLightB_x4);
       }
 
       texelR_x4 = _mm_mul_ps(texelR_x4, lightR_x4);
@@ -797,8 +796,6 @@ void FillFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* c
 
 
       _mm_storeu_si128((__m128i*)pixel, maskedOut);
-
-      END_TIMER_BLOCK_COUNTED(PixelFill, 4);
     }
   }
 
@@ -857,9 +854,9 @@ void DrawFlatQuadTex(platform_work_queue* queue, loaded_bitmap* drawBuffer, load
     float endY = Ceil(minY + ((float)(i + 1) * stepY));
     *work = { drawBuffer, bitmap, cam, light, faceNormal, color, scrLineL, scrLineR, lineL, lineR, startY, endY };
 
-    PlatformAddWorkEntry(queue, FillFlatQuadTexWork, work);
+    platformAPI.AddWorkEntry(queue, FillFlatQuadTexWork, work);
   }
-  PlatformCompleteAllWork(queue);
+  platformAPI.CompleteAllWork(queue);
 }
 
 void DrawTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera* cam, light_config light, triangle tri, v3* worldTri, v3 faceNormals, v4 color, loaded_bitmap* bitmap)
@@ -945,8 +942,6 @@ void DrawTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera*
   worldBound[2] = worldMiddleR;
   worldBound[3] = worldTri[2];
   DrawFlatQuadTex(queue, drawBuffer, bitmap, cam, light, bound, worldBound, faceNormals, color);
-
-  END_TIMER_BLOCK(DrawTriangle)
 }
 
 void ProcessTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera* cam, light_config light, triangle tri, v3* worldTri, v3 faceNormal, loaded_bitmap* texture, v4 color)
@@ -1264,9 +1259,9 @@ inline void DrawBitmap(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, v2 minP
   }
 }
 
-static void RenderGroupOutput(platform_work_queue* queue, memory_arena* arena, render_group* renderGroup, loaded_bitmap* drawBuffer)
+static void TileRenderGroupToOutput(platform_work_queue* queue, memory_arena* arena, render_group* renderGroup, loaded_bitmap* drawBuffer)
 {
-  BEGIN_TIMER_BLOCK(RenderGroupOutput);
+  BEGIN_TIMER_BLOCK(TileRenderGroupToOutput);
 
   for (int index = 0; index < renderGroup->pushBuffer.used;)
   {
@@ -1304,6 +1299,7 @@ static void RenderGroupOutput(platform_work_queue* queue, memory_arena* arena, r
         render_entry_bitmap* entry = (render_entry_bitmap*)((u8*)renderGroup->pushBuffer.base + index);
         index += sizeof(*entry);
 
+
         DrawBitmap(drawBuffer, entry->bitmap, entry->minP, entry->maxP);
 
       } break;
@@ -1328,7 +1324,6 @@ static void RenderGroupOutput(platform_work_queue* queue, memory_arena* arena, r
     }
   }
 
-  END_TIMER_BLOCK(RenderGroupOutput);
 }
 
 void* PushRenderElement_(render_group* renderGroup, size_t size, render_entry_type type)
@@ -1348,7 +1343,7 @@ void* PushRenderElement_(render_group* renderGroup, size_t size, render_entry_ty
 
 #define PUSH_RENDER_ELEMENT(renderGroup, type) (type*)PushRenderElement_(renderGroup, sizeof(type), RENDER_TYPE_##type) 
 
-inline render_entry_clear* Clear(render_group* renderGroup, v4 color)
+inline render_entry_clear* PushClear(render_group* renderGroup, v4 color)
 {
   render_entry_clear* entry = PUSH_RENDER_ELEMENT(renderGroup, render_entry_clear);
   if (entry)
@@ -1370,17 +1365,12 @@ inline render_entry_saturation* Saturation(render_group* renderGroup, float leve
   return entry;
 }
 
-inline render_entry_bitmap* PushBitmap(render_group* renderGroup, loaded_bitmap* bitmap, v3 pos, v2 size, v4 col = { 1.0f, 1.0f, 1.0f, 1.0f })
+inline render_entry_bitmap* PushBitmap(render_group* renderGroup, loaded_bitmap* bitmap, v2 minP, v2 maxP, v4 col = { 1.0f, 1.0f, 1.0f, 1.0f })
 {
   render_entry_bitmap* entry = PUSH_RENDER_ELEMENT(renderGroup, render_entry_bitmap);
   if (entry)
   {
     entry->bitmap = bitmap;
-    v3 halfSize = 0.5f * V3(size, 0);
-
-    v2 minP = WorldPointToScreen(renderGroup->cam, pos - halfSize) - V2(bitmap->width, bitmap->height) * bitmap->align;
-    v2 maxP = WorldPointToScreen(renderGroup->cam, pos + halfSize) - V2(bitmap->width, bitmap->height) * bitmap->align;
-
     entry->minP = minP;
     entry->maxP = maxP;
     entry->color = col;
@@ -1389,14 +1379,13 @@ inline render_entry_bitmap* PushBitmap(render_group* renderGroup, loaded_bitmap*
   return entry;
 }
 
-inline render_entry_rectangle* PushRect(render_group* renderGroup, v3 pos, v2 size, v4 col)
+inline render_entry_rectangle* PushRect(render_group* renderGroup, v2 minP, v2 maxP, v4 col)
 {
   render_entry_rectangle* entry = PUSH_RENDER_ELEMENT(renderGroup, render_entry_rectangle);
   if (entry)
   {
-    v3 halfSize = 0.5f * V3(size, 0);
-    entry->minP = WorldPointToScreen(renderGroup->cam, pos - halfSize);
-    entry->maxP = WorldPointToScreen(renderGroup->cam, pos + halfSize);
+    entry->minP = minP;
+    entry->maxP = maxP;
     entry->color = col;
   }
 
@@ -1418,7 +1407,7 @@ inline render_entry_rectangle_outline* PushRectOutline(render_group* renderGroup
   return entry;
 }
 
-inline render_entry_model* RenderModel(render_group* renderGroup, light_config light, loaded_model* model, v4 col, loaded_bitmap* bitmap)
+inline render_entry_model* PushRenderModel(render_group* renderGroup, light_config light, loaded_model* model, v4 col, loaded_bitmap* bitmap)
 {
   render_entry_model* entry = PUSH_RENDER_ELEMENT(renderGroup, render_entry_model);
   if (entry)

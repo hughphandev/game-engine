@@ -13,6 +13,8 @@
 #include "win32_platform.h"
 #include "utils.h"
 #include "thread.h"
+#include "opengl_render.cpp"
+// #include "software_render.cpp"
 
 // TODO: Global for now
 static bool g_running;
@@ -201,57 +203,23 @@ static void Win32ResizeDIBSection(win32_offscreen_buffer* buffer, int width, int
 
 }
 
-static void Win32BufferToWindow(HDC deviceContext, win32_offscreen_buffer* buffer, int windowWidth, int windowHeight)
+static void Win32BufferToWindow(HDC deviceContext, win32_offscreen_buffer* buffer, int windowWidth, int windowHeight, bool isHardware)
 {
-#if 0
-  //Note: not stretching for debug purpose!
-  //TODO: switch to aspect ratio in the future!
+  ASSERT(buffer->width > 0 && buffer->height > 0);
+  if (!isHardware)
+  {
+    //Note: not stretching for debug purpose!
+    //TODO: switch to aspect ratio in the future!
 
-  buffer->offSet.x = 0.5f * (float)(windowWidth - buffer->width);
-  buffer->offSet.y = 0.5f * (float)(windowHeight - buffer->height);
+    buffer->offSet.x = 0.5f * (float)(windowWidth - buffer->width);
+    buffer->offSet.y = 0.5f * (float)(windowHeight - buffer->height);
 
-  StretchDIBits(deviceContext, (int)buffer->offSet.x, (int)buffer->offSet.y, buffer->width, buffer->height, 0, 0, buffer->width, buffer->height, buffer->memory, &buffer->info, DIB_RGB_COLORS, SRCCOPY);
-#endif
-  glViewport(0, 0, windowWidth, windowHeight);
-  glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
-  glClear(GL_COLOR_BUFFER_BIT);
-
-  glBindTexture(GL_TEXTURE_2D, g_openGLBlitTexture);
-  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, buffer->width, buffer->height, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, buffer->memory);
-
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
-  glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
-
-  glEnable(GL_TEXTURE_2D);
-
-  glMatrixMode(GL_MODELVIEW);
-  glLoadIdentity();
-  glMatrixMode(GL_PROJECTION);
-  glLoadIdentity();
-  glMatrixMode(GL_TEXTURE);
-  glLoadIdentity();
-
-  glBegin(GL_TRIANGLES);
-  float p = 1.0f;
-  glTexCoord2f(0.0f, 0.0f);
-  glVertex2f(-p, -p);
-  glTexCoord2f(1.0f, 0.0f);
-  glVertex2f(p, -p);
-  glTexCoord2f(1.0f, 1.0f);
-  glVertex2f(p, p);
-
-  glTexCoord2f(0.0f, 0.0f);
-  glVertex2f(-p, -p);
-  glTexCoord2f(1.0f, 1.0f);
-  glVertex2f(p, p);
-  glTexCoord2f(0.0f, 1.0f);
-  glVertex2f(-p, p);
-  glEnd();
-
-  SwapBuffers(deviceContext);
+    StretchDIBits(deviceContext, (int)buffer->offSet.x, (int)buffer->offSet.y, buffer->width, buffer->height, 0, 0, buffer->width, buffer->height, buffer->memory, &buffer->info, DIB_RGB_COLORS, SRCCOPY);
+  }
+  else
+  {
+    SwapBuffers(deviceContext);
+  }
 }
 
 static void Win32InitOpenGL(HWND window)
@@ -1058,13 +1026,14 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, 
       game_memory gameMemory = {};
       gameMemory.permanentStorageSize = MEGABYTES(512);
       gameMemory.transientStorageSize = MEGABYTES(128);
-      gameMemory.fileIO.Free = DEBUGPlatformFreeMemory;
-      gameMemory.fileIO.Read = DEBUGPlatformReadFile;
-      gameMemory.fileIO.Write = DEBUGPlatformWriteFile;
+      gameMemory.platformAPI.FreeFile = DEBUGPlatformFreeMemory;
+      gameMemory.platformAPI.ReadFile = DEBUGPlatformReadFile;
+      gameMemory.platformAPI.WriteFile = DEBUGPlatformWriteFile;
       gameMemory.workQueue = &queue;
 
-      gameMemory.PlatformAddWorkEntry = (platform_add_work_entry*)Win32AddWorkEntry;
-      gameMemory.PlatformCompleteAllWork = (platform_complete_all_work*)Win32CompleteAllWork;
+      gameMemory.platformAPI.AddWorkEntry = (platform_add_work_entry*)Win32AddWorkEntry;
+      gameMemory.platformAPI.CompleteAllWork = (platform_complete_all_work*)Win32CompleteAllWork;
+      gameMemory.platformAPI.RenderToOpenGL = (platform_opengl_render*)OpenGLRenderGroupToOutput;
 
       uint64_t totalSize = gameMemory.permanentStorageSize + gameMemory.transientStorageSize;
 
@@ -1326,7 +1295,9 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, 
 
             win32_window_dimension wd = Win32GetWindowDimension(window);
             HDC deviceContext = GetDC(window);
-            Win32BufferToWindow(deviceContext, &g_backBuffer, wd.width, wd.height);
+
+            //TODO: consider other solution to pass the isHardware parameter.
+            Win32BufferToWindow(deviceContext, &g_backBuffer, wd.width, wd.height, ((game_state*)gameMemory.permanentStorage)->isHardware);
             ReleaseDC(window, deviceContext);
 
 #if INTERNAL

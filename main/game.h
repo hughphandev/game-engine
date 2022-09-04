@@ -10,11 +10,10 @@
 #include "assets.h"
 
 #if INTERNAL
-
 enum
 {
   DebugCycleCounter_GameUpdateAndRender,
-  DebugCycleCounter_RenderGroupOutput,
+  DebugCycleCounter_TileRenderGroupToOutput,
   DebugCycleCounter_DrawTriangle,
   DebugCycleCounter_PixelFill,
   DebugCycleCounter_Count,
@@ -26,7 +25,6 @@ struct debug_cycle_counter
   u32 hitCount;
 };
 
-extern struct game_memory* g_memory;
 #if _MSC_VER
 // #define COUNTER(ID) int ID = 0;
 // #define ADD_COUNTER(ID, i) ID += i;
@@ -151,6 +149,7 @@ struct game_state
   loaded_model cube;
 
   float time;
+  bool isHardware;
 };
 
 struct transient_state
@@ -168,6 +167,42 @@ struct transient_state
   bool isInit;
 };
 
+#if INTERNAL
+struct debug_read_file_result
+{
+  void* contents;
+  u32 contentSize;
+};
+
+#define DEBUG_PLATFORM_READ_FILE(name) debug_read_file_result name(char* fileName)
+typedef DEBUG_PLATFORM_READ_FILE(debug_platform_read_file);
+
+#define DEBUG_PLATFORM_FREE_MEMORY(name)void name (void* memory) 
+typedef DEBUG_PLATFORM_FREE_MEMORY(debug_platform_free_memory);
+
+#define DEBUG_PLATFORM_WRITE_FILE(name) bool name(char* fileName, size_t memorySize, void* memory) 
+typedef DEBUG_PLATFORM_WRITE_FILE(debug_platform_write_file);
+
+DEBUG_PLATFORM_READ_FILE(DEBUGPlatformReadFile);
+DEBUG_PLATFORM_FREE_MEMORY(DEBUGPlatformFreeMemory);
+DEBUG_PLATFORM_WRITE_FILE(DEBUGPlatformWriteFile);
+
+#define PLATFORM_OPENGL_RENDER(name) void name(render_group* renderGroup, loaded_bitmap* drawBuffer)
+typedef PLATFORM_OPENGL_RENDER(platform_opengl_render);
+
+struct platform_api
+{
+  debug_platform_read_file* ReadFile;
+  debug_platform_write_file* WriteFile;
+  debug_platform_free_memory* FreeFile;
+  platform_add_work_entry* AddWorkEntry;
+  platform_complete_all_work* CompleteAllWork;
+  platform_opengl_render* RenderToOpenGL;
+};
+
+#endif
+
+
 struct game_memory
 {
   bool isInit;
@@ -178,11 +213,7 @@ struct game_memory
   u64 transientStorageSize;
   void* transientStorage; // TODO: REQUIRE clear to zero on startup
 
-  file_io fileIO;
-
-  platform_add_work_entry* PlatformAddWorkEntry;
-  platform_complete_all_work* PlatformCompleteAllWork;
-
+  platform_api platformAPI;
   platform_work_queue* workQueue;
 
 #if INTERNAL
@@ -204,5 +235,7 @@ typedef GAME_OUTPUT_SOUND(game_output_sound);
 
 extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender);
 extern "C" GAME_OUTPUT_SOUND(GameOutputSound);
+
+struct platform_api platformAPI;
 
 #endif

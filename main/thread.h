@@ -27,8 +27,4 @@ struct platform_work_queue
 typedef PLATFORM_ADD_WORK_ENTRY(platform_add_work_entry);
 #define PLATFORM_COMPLETE_ALL_WORK(name) void name(platform_work_queue* queue)
 typedef PLATFORM_COMPLETE_ALL_WORK(platform_complete_all_work);
-
-static platform_add_work_entry* PlatformAddWorkEntry;
-static platform_complete_all_work* PlatformCompleteAllWork;
-
 #endif

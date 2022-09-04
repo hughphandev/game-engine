@@ -4,7 +4,7 @@
 #include "game.h"
 #include "intrinsics.h"
 #include "math.cpp"
-#include "render.cpp"
+#include "software_render.cpp"
 #include "random.cpp"
 #include "world.cpp"
 #include "physics.cpp"
@@ -133,12 +133,12 @@ void RemoveEntity(game_state* gameState, entity* it)
 
 void SaveLevel(game_state* gameState, game_memory* mem, char* fileName)
 {
-  mem->fileIO.Write(fileName, gameState->entityCount * sizeof(entity), gameState->entities);
+  mem->platformAPI.WriteFile(fileName, gameState->entityCount * sizeof(entity), gameState->entities);
 }
 
 void LoadLevel(game_state* gameState, game_memory* mem, char* fileName)
 {
-  debug_read_file_result fileLevel = mem->fileIO.Read(fileName);
+  debug_read_file_result fileLevel = mem->platformAPI.ReadFile(fileName);
   if (fileLevel.contentSize > 0)
   {
     entity* entities = (entity*)fileLevel.contents;
@@ -147,7 +147,7 @@ void LoadLevel(game_state* gameState, game_memory* mem, char* fileName)
     {
       gameState->entities[i] = entities[i];
     }
-    mem->fileIO.Free(entities);
+    mem->platformAPI.FreeFile(entities);
   }
 }
 
@@ -158,7 +158,7 @@ void AddSound(game_state* gameState, game_memory* gameMemory, loaded_sound* soun
 
 void AddSound(game_state* gameState, game_memory* gameMemory, char* soundName)
 {
-  gameState->sounds[gameState->soundCount++] = DEBUGLoadWAV(&gameState->arena, gameMemory->fileIO, soundName);
+  gameState->sounds[gameState->soundCount++] = DEBUGLoadWAV(&gameState->arena, gameMemory->platformAPI, soundName);
 }
 
 
@@ -289,6 +289,18 @@ void UpdateEntity(game_state* gameState, transient_state* tranState, entity* it,
   }
 }
 
+static void RenderGroupToOutput(platform_work_queue* queue, memory_arena* arena, render_group* renderGroup, loaded_bitmap* drawBuffer, bool isHardware)
+{
+  if(isHardware)
+  {
+    platformAPI.RenderToOpenGL(renderGroup, drawBuffer);
+  }
+  else
+  {
+    TileRenderGroupToOutput(queue, arena, renderGroup, drawBuffer);
+  }
+}
+
 #if INTERNAL
 game_memory* g_memory;
 #endif
@@ -305,9 +317,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   {
     InitMemoryArena(&gameState->arena, memory->permanentStorageSize - sizeof(game_state), (u8*)memory->permanentStorage + sizeof(game_state));
 
-    //NOTE: Init work queue function
-    PlatformAddWorkEntry = memory->PlatformAddWorkEntry;
-    PlatformCompleteAllWork = memory->PlatformCompleteAllWork;
+    platformAPI = memory->platformAPI;
 
     gameState->programMode = MODE_NORMAL;
     gameState->viewDistance = 0;
@@ -325,6 +335,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     gameState->cam.zFar = 100;
     gameState->cam.pos = V3(0, 0, -5);
     gameState->cam.rot = {};
+    gameState->isHardware = true;
 
     world->tileCountX = 1024;
     world->tileCountY = 1024;
@@ -344,12 +355,12 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     gameState->viewDistance = 1;
 
-    gameState->wall = LoadImageToArena(&gameState->arena, memory->fileIO, "wall_side_left.bmp");
-    gameState->knight = LoadImageToArena(&gameState->arena, memory->fileIO, "knight_idle_anim_f0.bmp");
+    gameState->wall = LoadImageToArena(&gameState->arena, memory->platformAPI, "wall_side_left.bmp");
+    gameState->knight = LoadImageToArena(&gameState->arena, memory->platformAPI, "knight_idle_anim_f0.bmp");
 
     // gameState->cube = DEBUGLoadObj(gameState, memory, "cube.obj");
 
-    gameState->bricks = LoadImageToArena(&gameState->arena, memory->fileIO, "bricks.bmp");
+    gameState->bricks = LoadImageToArena(&gameState->arena, memory->platformAPI, "bricks.bmp");
     gameState->bricksNormal = MakeEmptyBitmap(&gameState->arena, gameState->bricks.width, gameState->bricks.height, false);
     MakeSphereNormalMap(&gameState->bricksNormal, 0.0f);
 
@@ -399,7 +410,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
   game_world* world = &gameState->world;
   render_group* renderGroup = InitRenderGroup(&tranState.tranArena, MEGABYTES(4), &gameState->cam);
-  Clear(renderGroup, V4(0.25f, 0.25f, 0.25f, 0.0f));
+  PushClear(renderGroup, V4(0.25f, 0.25f, 0.25f, 0.0f));
 
   // LoadEntity(&tranState, gameState->player);
 
@@ -409,12 +420,12 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     {
       case ENTITY_PLAYER:
       {
-        PushBitmap(renderGroup, &gameState->knight, tranState.activeEntity[i]->pos, tranState.activeEntity[i]->size.xy);
+        // PushBitmap(renderGroup, &gameState->knight, tranState.activeEntity[i]->pos, tranState.activeEntity[i]->size.xy);
       } break;
 
       case ENTITY_WALL:
       {
-        PushBitmap(renderGroup, &gameState->wall, tranState.activeEntity[i]->pos, tranState.activeEntity[i]->size.xy);
+        // PushBitmap(renderGroup, &gameState->wall, tranState.activeEntity[i]->pos, tranState.activeEntity[i]->size.xy);
       } break;
 
       case ENTITY_PROJECTILE:
@@ -522,7 +533,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   light.pointLightsCount = 1;
   light.directionalLights = &sunLight;
   light.directionalLightsCount = 1;
-  loaded_model cube = DEBUGLoadObj(&tranState.tranArena, memory->fileIO, "cube.obj");
+  loaded_model cube = DEBUGLoadObj(&tranState.tranArena, memory->platformAPI, "cube.obj");
 
   for (u32 i = 0; i < cube.posCount; ++i)
   {
@@ -534,11 +545,13 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     cube.normals[i] = Rotate(cube.normals[i], V3(gameState->time, -gameState->time, 0.0f));
   }
 
-  RenderModel(renderGroup, light, &cube, col, &gameState->bricks);
+  // PushRenderModel(renderGroup, light, &cube, col, &gameState->bricks);
+  // PushRect(renderGroup, V2(0, 0), V2(100, 100), V4(1.0f, 1.0f, 1.0f, 1.0f));
+  PushBitmap(renderGroup, &gameState->bricks, V2(0, 0), V2(gameState->bricks.width, gameState->bricks.height)); 
 
   gameState->time += input.dt;
 
-  RenderGroupOutput(memory->workQueue, &tranState.tranArena, renderGroup, &drawBuffer);
+  RenderGroupToOutput(memory->workQueue, &tranState.tranArena, renderGroup, &drawBuffer, gameState->isHardware);
 
   if (input.f3.isDown && input.f3.halfTransitionCount == 1)
   {
