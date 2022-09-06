@@ -90,6 +90,45 @@ inline v4 AlphaBlend(v4 color, v4 baseColor)
   return result;
 }
 
+v3 SampleEnvMap(v2 screenSpaceUV, v3 sampleDirection, float roughness, environment_map* map, float distanceFromMapInZ)
+{
+  //NOTE: screenSpaceUV is normalized
+  u32 LODIndex = (u32)(roughness * (float)(ARRAY_COUNT(map->LOD) - 1) + 0.5f);
+  ASSERT(LODIndex < ARRAY_COUNT(map->LOD));
+
+  loaded_bitmap* LOD = &map->LOD[LODIndex];
+
+  float UVsPerMeter = 0.1f; //should be different from x and y
+  float c = (UVsPerMeter * distanceFromMapInZ) / sampleDirection.y;
+  v2 offset = c * V2(sampleDirection.x, sampleDirection.z);
+  v2 UV = offset + screenSpaceUV;
+
+  UV.x = Clamp01(UV.x);
+  UV.y = Clamp01(UV.y);
+
+  //TODO: actually calculate x and y
+  float xPixel = (UV.x * (float)(LOD->width - 2));
+  float yPixel = (UV.y * (float)(LOD->height - 2));
+
+  ASSERT(xPixel >= 0.0f);
+  ASSERT(yPixel >= 0.0f);
+
+  i32 xFloor = (i32)(xPixel);
+  i32 yFloor = (i32)(yPixel);
+
+  float tX = xPixel - xFloor;
+  float tY = yPixel - yFloor;
+
+  bilinear_sample sample = BilinearSample(LOD, xFloor, yFloor);
+  v3 result = SRGBBilinearBlend(sample, tX, tY).xyz;
+
+#if 0
+  //NOTE: turn on to see where it's reflected
+  LOD->pixel[yFloor * LOD->width + xFloor] = 0xFFFFFFFF;
+#endif
+  return result;
+}
+
 inline u32 AlphaBlend(u32 color, u32 baseColor)
 {
   v4 d = UnpackToRGBA255(baseColor) / 255.0f;
@@ -132,9 +171,9 @@ void DrawLine(loaded_bitmap* drawBuffer, v2 from, v2 to, v4 color = V4(1, 1, 1, 
   }
 }
 
-static void DrawRectangle(loaded_bitmap* buffer, v2 min, v2 max, v4 color)
+static void DrawRectangle(win32_offscreen_buffer* buffer, v2 min, v2 max, v4 color)
 {
-  u32* pixel = buffer->pixel;
+  u32* pixel = (u32*)buffer->memory;
 
   min = Clamp(min, V2(0, 0), V2((float)buffer->width, (float)buffer->height));
   max = Clamp(max, V2(0, 0), V2((float)buffer->width, (float)buffer->height));
@@ -149,9 +188,9 @@ static void DrawRectangle(loaded_bitmap* buffer, v2 min, v2 max, v4 color)
   }
 }
 
-static void DrawRectangleOutline(loaded_bitmap* buffer, v2 min, v2 max, u32 thickness, v4 color)
+static void DrawRectangleOutline(win32_offscreen_buffer* buffer, v2 min, v2 max, u32 thickness, v4 color)
 {
-  u32* pixel = buffer->pixel;
+  u32* pixel = (u32*)buffer->memory;
 
   min = Clamp(min, V2(0, 0), V2((float)buffer->width, (float)buffer->height));
   max = Clamp(max, V2(0, 0), V2((float)buffer->width, (float)buffer->height));
@@ -162,10 +201,10 @@ static void DrawRectangleOutline(loaded_bitmap* buffer, v2 min, v2 max, u32 thic
   DrawRectangle(buffer, V2(min.x, max.y - thickness), max, color);
 }
 
-static void ChangeSaturation(loaded_bitmap* buffer, float level)
+static void ChangeSaturation(win32_offscreen_buffer* buffer, float level)
 {
   //TODO: Optimize Performance
-  u32* pixel = buffer->pixel;
+  u32* pixel = (u32*)buffer->memory;
 
   for (int y = 0; y < buffer->height; ++y)
   {
@@ -185,9 +224,9 @@ static void ChangeSaturation(loaded_bitmap* buffer, float level)
   }
 }
 
-void ClearBuffer(loaded_bitmap* drawBuffer, u32 c)
+void ClearBuffer(win32_offscreen_buffer* drawBuffer, u32 c)
 {
-  u32* pixel = drawBuffer->pixel;
+  u32* pixel = (u32*)drawBuffer->memory;
   for (int y = 0; y < drawBuffer->height; ++y)
   {
     for (int x = 0; x < drawBuffer->width; ++x)
@@ -195,170 +234,6 @@ void ClearBuffer(loaded_bitmap* drawBuffer, u32 c)
       *pixel++ = c;
     }
   }
-}
-
-loaded_bitmap MakeEmptyBitmap(memory_arena* arena, u32 width, u32 height, bool clearToZero = true)
-{
-  loaded_bitmap result = {};
-  result.pixel = PUSH_ARRAY(arena, u32, width * height);
-  if (result.pixel)
-  {
-    result.width = width;
-    result.height = height;
-    if (clearToZero)
-    {
-      ZeroSize(result.pixel, width * height * BITMAP_PIXEL_SIZE);
-    }
-  }
-  return result;
-}
-
-void MakeSphereDiffuseMap(loaded_bitmap* bitmap, float cX = 1.0f, float cY = 1.0f)
-{
-  float invWidth = 1.0f / (bitmap->width - 1.0f);
-  float invHeight = 1.0f / (bitmap->height - 1.0f);
-
-  for (int y = 0; y < bitmap->height; ++y)
-  {
-    for (int x = 0; x < bitmap->width; ++x)
-    {
-      v2 bitmapUV = V2(x * invWidth, y * invHeight);
-      v2 N = V2(cX, cY) * (2.0f * bitmapUV - 1.0f);
-
-      float alpha = 0.0f;
-      float zSqr = 1.0f - Sqr(N.x) - Sqr(N.y);
-      if (zSqr >= 0.0f)
-      {
-        alpha = 1.0f;
-      }
-
-      v4 col = V4(alpha * V3(0.0f, 0.0f, 0.0f), alpha);
-
-      u32 index = y * bitmap->width + x;
-      bitmap->pixel[index] = col.ToU32();
-    }
-  }
-}
-
-void MakeSphereNormalMap(loaded_bitmap* bitmap, float roughness, float cX = 1.0f, float cY = 1.0f)
-{
-  float invWidth = 1.0f / (bitmap->width - 1.0f);
-  float invHeight = 1.0f / (bitmap->height - 1.0f);
-
-  for (int y = 0; y < bitmap->height; ++y)
-  {
-    for (int x = 0; x < bitmap->width; ++x)
-    {
-      v2 bitmapUV = V2(x * invWidth, y * invHeight);
-      v2 N = V2(cX, cY) * (2.0f * bitmapUV - 1.0f);
-
-      float rsqrt2 = 0.707106781187f;
-      v3 normal = V3(0.0f, rsqrt2, rsqrt2);
-      float zSqr = 1.0f - Sqr(N.x) - Sqr(N.y);
-      if (zSqr >= 0.0f)
-      {
-        normal = V3(N, Sqrt(zSqr));
-      }
-
-      v4 col = V4(0.5f * (normal + 1.0f), roughness);
-
-      u32 index = y * bitmap->width + x;
-      bitmap->pixel[index] = col.ToU32();
-    }
-  }
-}
-
-mat4 GetRotateXMatrix(float value)
-{
-  return {
-    1, 0, 0, 0,
-    0, Cos(value), -Sin(value), 0,
-    0, Sin(value), Cos(value), 0,
-    0, 0, 0, 1,
-  };
-}
-
-mat4 GetRotateYMatrix(float value)
-{
-  return {
-    Cos(value), 0, Sin(value), 0,
-    0, 1, 0, 0,
-    -Sin(value), 0, Cos(value), 0,
-    0, 0, 0, 1,
-  };
-}
-
-mat4 GetRotateZMatrix(float value)
-{
-  return {
-    Cos(value), -Sin(value), 0, 0,
-    Sin(value), Cos(value), 0, 0,
-    0, 0, 1, 0,
-    0, 0, 0, 1,
-  };
-}
-
-v3 Rotate(v3 vec, v3 rotation)
-{
-  v4 result = GetRotateZMatrix(rotation.z) * GetRotateYMatrix(rotation.y) * GetRotateXMatrix(rotation.x) * V4(vec, 1.0f);
-  return result.xyz;
-}
-
-mat4 GetProjectionMatrix(camera* cam)
-{
-  float a = cam->size.x / cam->size.y;
-  float s = 1 / Tan(0.5f * cam->rFov);
-  float deltaZ = cam->zFar - cam->zNear;
-
-  mat4 result = {};
-  result.r0 = V4(s, 0, 0, 0);
-  result.r1 = V4(0, s * a, 0, 0);
-  result.r2 = V4(0, 0, cam->zFar / deltaZ, -(cam->zFar * cam->zNear) / deltaZ);
-  result.r3 = V4(0, 0, 1, 0);
-
-  return result;
-}
-
-mat4 GetTranslateMatrix(v3 pos)
-{
-  mat4 result = {};
-  result.r0 = V4(1, 0, 0, -pos.x);
-  result.r1 = V4(0, 1, 0, -pos.y);
-  result.r2 = V4(0, 0, 1, -pos.z);
-  result.r3 = V4(0, 0, 0, 1);
-
-  return result;
-}
-
-mat4 GetScaleMatrix(v3 scale)
-{
-  mat4 result = {};
-  result.r0 = V4(scale.x, 0, 0, 0);
-  result.r1 = V4(0, scale.y, 0, 0);
-  result.r2 = V4(0, 0, scale.z, 0);
-  result.r3 = V4(0, 0, 0, 1);
-
-  return result;
-}
-
-mat4 GetLookAtMatrix(v3 eye, v3 target, v3 up = V3(0, 1, 0))
-{
-  v3 camZ = Normalize(target - eye);
-  v3 camX = Normalize(Cross(up, camZ));
-  v3 camY = Normalize(Cross(camZ, camX));
-
-  char buf[256];
-  _snprintf_s(buf, sizeof(buf), "up=%f, %f, %f", up.x, up.y, up.z);
-  OutputDebugStringA(buf);
-
-
-  mat4 result = {};
-  result.r0 = V4(camX.x, camX.y, camX.z, -Dot(camX, eye));
-  result.r1 = V4(camY.x, camY.y, camY.z, -Dot(camY, eye));
-  result.r2 = V4(camZ.x, camZ.y, camZ.z, -Dot(camZ, eye));
-  result.r3 = V4(0, 0, 0, 1);
-
-  return result;
 }
 
 inline v3 WorldPointToCamera(camera* cam, v3 point)
@@ -374,7 +249,7 @@ inline v3 WorldPointToCamera(camera* cam, v3 point)
 inline v3 CameraPointToNDC(camera* cam, v3 point)
 {
   //NOTE: transform from camera coordinate to NDC
-  mat4 proj = GetProjectionMatrix(cam);
+  mat4 proj = GetProjectionMatrix(cam->size, cam->rFov, cam->zFar, cam->zNear);
 
   v4 homoPoint = proj * V4(point, 1);
   homoPoint.xyz /= homoPoint.w;
@@ -402,45 +277,6 @@ inline v2 ScreenPointToWorld(camera* cam, v2 point)
   v2 relPos = point - cam->offSet.xy;
   v2 worldCoord = { relPos.x / (float)cam->meterToPixel, relPos.y / (float)cam->meterToPixel };
   return worldCoord + cam->pos.xy;
-}
-
-v3 SampleEnvMap(v2 screenSpaceUV, v3 sampleDirection, float roughness, environment_map* map, float distanceFromMapInZ)
-{
-  //NOTE: screenSpaceUV is normalized
-  u32 LODIndex = (u32)(roughness * (float)(ARRAY_COUNT(map->LOD) - 1) + 0.5f);
-  ASSERT(LODIndex < ARRAY_COUNT(map->LOD));
-
-  loaded_bitmap* LOD = &map->LOD[LODIndex];
-
-  float UVsPerMeter = 0.1f; //should be different from x and y
-  float c = (UVsPerMeter * distanceFromMapInZ) / sampleDirection.y;
-  v2 offset = c * V2(sampleDirection.x, sampleDirection.z);
-  v2 UV = offset + screenSpaceUV;
-
-  UV.x = Clamp01(UV.x);
-  UV.y = Clamp01(UV.y);
-
-  //TODO: actually calculate x and y
-  float xPixel = (UV.x * (float)(LOD->width - 2));
-  float yPixel = (UV.y * (float)(LOD->height - 2));
-
-  ASSERT(xPixel >= 0.0f);
-  ASSERT(yPixel >= 0.0f);
-
-  i32 xFloor = (i32)(xPixel);
-  i32 yFloor = (i32)(yPixel);
-
-  float tX = xPixel - xFloor;
-  float tY = yPixel - yFloor;
-
-  bilinear_sample sample = BilinearSample(LOD, xFloor, yFloor);
-  v3 result = SRGBBilinearBlend(sample, tX, tY).xyz;
-
-#if 0
-  //NOTE: turn on to see where it's reflected
-  LOD->pixel[yFloor * LOD->width + xFloor] = 0xFFFFFFFF;
-#endif
-  return result;
 }
 
 v3 Hadamard(v3 texel, v3 col)
@@ -478,7 +314,7 @@ vertex ShilfPointToNextCol(vertex origin, vertex dir)
   return result;
 }
 
-void FillFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* cam, light_config light, v3 faceNormal, v4 color, vertex_line scrLineL, vertex_line scrLineR, line lineL, line lineR, float startY, float endY)
+void FillFlatQuadTex(win32_offscreen_buffer* drawBuffer, loaded_bitmap* bitmap, camera* cam, light_config light, v3 faceNormal, v4 color, vertex_line scrLineL, vertex_line scrLineR, line lineL, line lineR, float startY, float endY)
 {
   v2 scrSize = V2(drawBuffer->width, drawBuffer->height);
   v2 bitmapMax = V2(bitmap->width - 1, bitmap->height - 1);
@@ -566,7 +402,7 @@ void FillFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* c
       __m128 tY_x4 = _mm_sub_ps(bmPosY_x4, yFloor_x4);
 
       i32 orgIndex = (i32)(x + y * scrSize.x);
-      u32* pixel = drawBuffer->pixel + orgIndex;
+      u32* pixel = (u32*)drawBuffer->memory + orgIndex;
 
       __m128i destCol = _mm_loadu_si128((__m128i*)pixel);
 
@@ -803,7 +639,7 @@ void FillFlatQuadTex(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* c
 
 struct fill_flat_quad_work
 {
-  loaded_bitmap* drawBuffer;
+  win32_offscreen_buffer* drawBuffer;
   loaded_bitmap* bitmap;
   camera* cam;
   light_config light;
@@ -823,7 +659,7 @@ WORK_ENTRY_CALLBACK(FillFlatQuadTexWork)
   FillFlatQuadTex(work->drawBuffer, work->bitmap, work->cam, work->light, work->faceNormal, work->color, work->scrLineL, work->scrLineR, work->lineL, work->lineR, work->startY, work->endY);
 }
 
-void DrawFlatQuadTex(platform_work_queue* queue, loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, camera* cam, light_config light, flat_quad bound, v3* worldBound, v3 faceNormal, v4 color)
+void DrawFlatQuadTex(platform_work_queue* queue, win32_offscreen_buffer* drawBuffer, loaded_bitmap* bitmap, camera* cam, light_config light, flat_quad bound, v3* worldBound, v3 faceNormal, v4 color)
 {
   v2 scrSize = V2(drawBuffer->width, drawBuffer->height);
 
@@ -859,7 +695,7 @@ void DrawFlatQuadTex(platform_work_queue* queue, loaded_bitmap* drawBuffer, load
   platformAPI.CompleteAllWork(queue);
 }
 
-void DrawTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera* cam, light_config light, triangle tri, v3* worldTri, v3 faceNormals, v4 color, loaded_bitmap* bitmap)
+void DrawTriangle(platform_work_queue* queue, win32_offscreen_buffer* drawBuffer, camera* cam, light_config light, triangle tri, v3* worldTri, v3 faceNormals, v4 color, loaded_bitmap* bitmap)
 {
   BEGIN_TIMER_BLOCK(DrawTriangle);
 
@@ -944,7 +780,7 @@ void DrawTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera*
   DrawFlatQuadTex(queue, drawBuffer, bitmap, cam, light, bound, worldBound, faceNormals, color);
 }
 
-void ProcessTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, camera* cam, light_config light, triangle tri, v3* worldTri, v3 faceNormal, loaded_bitmap* texture, v4 color)
+void ProcessTriangle(platform_work_queue* queue, win32_offscreen_buffer* drawBuffer, camera* cam, light_config light, triangle tri, v3* worldTri, v3 faceNormal, loaded_bitmap* texture, v4 color)
 {
   for (int i = 0; i < ARRAY_COUNT(tri.p); ++i)
   {
@@ -956,7 +792,7 @@ void ProcessTriangle(platform_work_queue* queue, loaded_bitmap* drawBuffer, came
   DrawTriangle(queue, drawBuffer, cam, light, tri, worldTri, faceNormal, color, texture);
 }
 
-void Draw(platform_work_queue* queue, memory_arena* arena, loaded_bitmap* drawBuffer, light_config light, camera* cam, loaded_model* model, v4 color)
+void Draw(platform_work_queue* queue, memory_arena* arena, win32_offscreen_buffer* drawBuffer, light_config light, camera* cam, loaded_model* model, v4 color)
 {
   v2* uv = model->texCoords;
   v3* nor = model->normals;
@@ -1056,7 +892,7 @@ void Draw(platform_work_queue* queue, memory_arena* arena, loaded_bitmap* drawBu
   }
 }
 
-void DrawRectSlowly(loaded_bitmap* drawBuffer, camera* cam, v2 origin, v2 xAxis, v2 yAxis, v4 color, loaded_bitmap* bitmap, loaded_bitmap* normalMap, environment_map* top, environment_map* middle, environment_map* bottom)
+void DrawRectSlowly(win32_offscreen_buffer* drawBuffer, camera* cam, v2 origin, v2 xAxis, v2 yAxis, v4 color, loaded_bitmap* bitmap, loaded_bitmap* normalMap, environment_map* top, environment_map* middle, environment_map* bottom)
 {
   mat4 trans = {};
   trans.r0 = Normalize(V4(yAxis.y, -yAxis.x, 0, 0));
@@ -1079,7 +915,7 @@ void DrawRectSlowly(loaded_bitmap* drawBuffer, camera* cam, v2 origin, v2 xAxis,
   float invSqrlengthX = 1.0f / (Sqr(xAxis.x) + Sqr(xAxis.y));
   float invSqrlengthY = 1.0f / (Sqr(yAxis.x) + Sqr(yAxis.y));
 
-  u32* pixel = (u32*)drawBuffer->pixel;
+  u32* pixel = (u32*)drawBuffer->memory;
 
   float xList[] = { origin.x, origin.x + xAxis.x, origin.x + yAxis.x, origin.x + xAxis.x + yAxis.x };
   int xCount = ARRAY_COUNT(xList);
@@ -1220,7 +1056,7 @@ void DrawRectSlowly(loaded_bitmap* drawBuffer, camera* cam, v2 origin, v2 xAxis,
   }
 }
 
-inline void DrawBitmap(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, v2 minP, v2 maxP)
+inline void DrawBitmap(win32_offscreen_buffer* drawBuffer, loaded_bitmap* bitmap, v2 minP, v2 maxP)
 {
   if (maxP.x < minP.x) return;
   if (maxP.y < minP.y) return;
@@ -1248,7 +1084,7 @@ inline void DrawBitmap(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, v2 minP
       bilinear_sample sample = BilinearSample(bitmap, (u32)p.x, (u32)p.y);
       v4 col = SRGBBilinearBlend(sample, tX, tY);
 
-      u32* pixel = &drawBuffer->pixel[y * drawBuffer->width + x];
+      u32* pixel = &((u32*)drawBuffer->memory)[y * drawBuffer->width + x];
       v4 base = SRGB255ToLinear1(UnpackToRGBA255(*pixel));
 
       col = AlphaBlend(col, base);
@@ -1259,184 +1095,71 @@ inline void DrawBitmap(loaded_bitmap* drawBuffer, loaded_bitmap* bitmap, v2 minP
   }
 }
 
-static void TileRenderGroupToOutput(platform_work_queue* queue, memory_arena* arena, render_group* renderGroup, loaded_bitmap* drawBuffer)
+static void TileRenderToOutput(platform_work_queue* queue, memory_arena* arena, render_commands* renderCommands, win32_offscreen_buffer* buffer)
 {
-  BEGIN_TIMER_BLOCK(TileRenderGroupToOutput);
+  BEGIN_TIMER_BLOCK(TileRenderToOutput);
 
-  for (int index = 0; index < renderGroup->pushBuffer.used;)
+  for (int index = 0; index < renderCommands->pushBuffer.used;)
   {
-    render_entry_header* header = (render_entry_header*)((u8*)renderGroup->pushBuffer.base + index);
+    render_entry_header* header = (render_entry_header*)((u8*)renderCommands->pushBuffer.base + index);
     index += sizeof(*header);
 
     switch (header->type)
     {
       case RENDER_TYPE_render_entry_saturation:
       {
-        render_entry_saturation* entry = (render_entry_saturation*)((u8*)renderGroup->pushBuffer.base + index);
+        render_entry_saturation* entry = (render_entry_saturation*)((u8*)renderCommands->pushBuffer.base + index);
         index += sizeof(*entry);
 
-        ChangeSaturation(drawBuffer, entry->level);
+        ChangeSaturation(buffer, entry->level);
       } break;
 
       case RENDER_TYPE_render_entry_rectangle:
       {
-        render_entry_rectangle* entry = (render_entry_rectangle*)((u8*)renderGroup->pushBuffer.base + index);
+        render_entry_rectangle* entry = (render_entry_rectangle*)((u8*)renderCommands->pushBuffer.base + index);
         index += sizeof(*entry);
 
-        DrawRectangle(drawBuffer, entry->minP, entry->maxP, entry->color);
+        DrawRectangle(buffer, entry->minP, entry->maxP, entry->color);
       } break;
 
       case RENDER_TYPE_render_entry_rectangle_outline:
       {
-        render_entry_rectangle_outline* entry = (render_entry_rectangle_outline*)((u8*)renderGroup->pushBuffer.base + index);
+        render_entry_rectangle_outline* entry = (render_entry_rectangle_outline*)((u8*)renderCommands->pushBuffer.base + index);
         index += sizeof(*entry);
 
-        DrawRectangleOutline(drawBuffer, entry->minP, entry->maxP, entry->thickness, entry->color);
+        DrawRectangleOutline(buffer, entry->minP, entry->maxP, entry->thickness, entry->color);
       } break;
 
       case RENDER_TYPE_render_entry_bitmap:
       {
-        render_entry_bitmap* entry = (render_entry_bitmap*)((u8*)renderGroup->pushBuffer.base + index);
+        render_entry_bitmap* entry = (render_entry_bitmap*)((u8*)renderCommands->pushBuffer.base + index);
         index += sizeof(*entry);
 
 
-        DrawBitmap(drawBuffer, entry->bitmap, entry->minP, entry->maxP);
+        DrawBitmap(buffer, entry->bitmap, entry->minP, entry->maxP);
 
       } break;
 
       case RENDER_TYPE_render_entry_clear:
       {
-        render_entry_clear* entry = (render_entry_clear*)((u8*)renderGroup->pushBuffer.base + index);
+        render_entry_clear* entry = (render_entry_clear*)((u8*)renderCommands->pushBuffer.base + index);
         index += sizeof(*entry);
 
-        ClearBuffer(drawBuffer, entry->color.ToU32());
+        ClearBuffer(buffer, entry->color.ToU32());
       } break;
 
       case RENDER_TYPE_render_entry_model:
       {
-        render_entry_model* entry = (render_entry_model*)((u8*)renderGroup->pushBuffer.base + index);
+        render_entry_model* entry = (render_entry_model*)((u8*)renderCommands->pushBuffer.base + index);
         index += sizeof(*entry);
 
-        Draw(queue, arena, drawBuffer, entry->light, renderGroup->cam, entry->model, entry->col);
+        Draw(queue, arena, buffer, entry->light, entry->cam, entry->model, entry->col);
       } break;
 
       // INVALID_DEFAULT_CASE;
     }
   }
 
-}
-
-void* PushRenderElement_(render_group* renderGroup, size_t size, render_entry_type type)
-{
-  render_entry_header* result = (render_entry_header*)PushSize_(&renderGroup->pushBuffer, size + sizeof(render_entry_header));
-
-  if (result)
-  {
-    result->type = type;
-  }
-  else
-  {
-    INVALID_CODE_PATH;
-  }
-  return result + 1;
-}
-
-#define PUSH_RENDER_ELEMENT(renderGroup, type) (type*)PushRenderElement_(renderGroup, sizeof(type), RENDER_TYPE_##type) 
-
-inline render_entry_clear* PushClear(render_group* renderGroup, v4 color)
-{
-  render_entry_clear* entry = PUSH_RENDER_ELEMENT(renderGroup, render_entry_clear);
-  if (entry)
-  {
-    entry->color = color;
-  }
-
-  return entry;
-}
-
-inline render_entry_saturation* Saturation(render_group* renderGroup, float level)
-{
-  render_entry_saturation* entry = PUSH_RENDER_ELEMENT(renderGroup, render_entry_saturation);
-  if (entry)
-  {
-    entry->level = level;
-  }
-
-  return entry;
-}
-
-inline render_entry_bitmap* PushBitmap(render_group* renderGroup, loaded_bitmap* bitmap, v2 minP, v2 maxP, v4 col = { 1.0f, 1.0f, 1.0f, 1.0f })
-{
-  render_entry_bitmap* entry = PUSH_RENDER_ELEMENT(renderGroup, render_entry_bitmap);
-  if (entry)
-  {
-    entry->bitmap = bitmap;
-    entry->minP = minP;
-    entry->maxP = maxP;
-    entry->color = col;
-  }
-
-  return entry;
-}
-
-inline render_entry_rectangle* PushRect(render_group* renderGroup, v2 minP, v2 maxP, v4 col)
-{
-  render_entry_rectangle* entry = PUSH_RENDER_ELEMENT(renderGroup, render_entry_rectangle);
-  if (entry)
-  {
-    entry->minP = minP;
-    entry->maxP = maxP;
-    entry->color = col;
-  }
-
-  return entry;
-}
-
-inline render_entry_rectangle_outline* PushRectOutline(render_group* renderGroup, v3 pos, v2 size, u32 thickness, v4 col)
-{
-  render_entry_rectangle_outline* entry = PUSH_RENDER_ELEMENT(renderGroup, render_entry_rectangle_outline);
-  if (entry)
-  {
-    v3 halfSize = 0.5f * V3(size, 0);
-    entry->minP = WorldPointToScreen(renderGroup->cam, pos - halfSize);
-    entry->maxP = WorldPointToScreen(renderGroup->cam, pos + halfSize);
-    entry->color = col;
-    entry->thickness = thickness;
-  }
-
-  return entry;
-}
-
-inline render_entry_model* PushRenderModel(render_group* renderGroup, light_config light, loaded_model* model, v4 col, loaded_bitmap* bitmap)
-{
-  render_entry_model* entry = PUSH_RENDER_ELEMENT(renderGroup, render_entry_model);
-  if (entry)
-  {
-    entry->model = model;
-    entry->light = light;
-
-    entry->col = col;
-    entry->bitmap = bitmap;
-  }
-
-  return entry;
-}
-
-inline render_group* InitRenderGroup(memory_arena* arena, size_t maxPushBufferSize, camera* cam)
-{
-  render_group* result = PUSH_TYPE(arena, render_group);
-  InitMemoryArena(&result->pushBuffer, maxPushBufferSize, PUSH_SIZE(arena, maxPushBufferSize));
-
-  result->cam = cam;
-  i32 pixelGuard = 4;
-  i32 camSizeIndex = (i32)(cam->size.x * cam->size.y + pixelGuard);
-  cam->zBuffer = PUSH_ARRAY(arena, float, camSizeIndex);
-  for (int i = 0; i < cam->size.x * cam->size.y; ++i)
-  {
-    cam->zBuffer[i] = INFINITY;
-  }
-
-  return result;
 }
 
 #endif

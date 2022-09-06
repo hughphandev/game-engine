@@ -126,7 +126,7 @@ inline v2 V2(float x, float y)
   return { x, y };
 }
 
-inline v2 V2(i32 x, i32 y)
+inline v2 V2(int x, int y)
 {
   return { (float)x, (float)y };
 }
@@ -882,5 +882,93 @@ inline float Det(mat4 a)
     m[0][2] * m[1][1] * m[2][0] * m[3][3] + m[0][1] * m[1][2] * m[2][0] * m[3][3] +
     m[0][2] * m[1][0] * m[2][1] * m[3][3] - m[0][0] * m[1][2] * m[2][1] * m[3][3] -
     m[0][1] * m[1][0] * m[2][2] * m[3][3] + m[0][0] * m[1][1] * m[2][2] * m[3][3];
+}
+
+mat4 GetRotateXMatrix(float value)
+{
+  return {
+    1, 0, 0, 0,
+    0, Cos(value), -Sin(value), 0,
+    0, Sin(value), Cos(value), 0,
+    0, 0, 0, 1,
+  };
+}
+
+mat4 GetRotateYMatrix(float value)
+{
+  return {
+    Cos(value), 0, Sin(value), 0,
+    0, 1, 0, 0,
+    -Sin(value), 0, Cos(value), 0,
+    0, 0, 0, 1,
+  };
+}
+
+mat4 GetRotateZMatrix(float value)
+{
+  return {
+    Cos(value), -Sin(value), 0, 0,
+    Sin(value), Cos(value), 0, 0,
+    0, 0, 1, 0,
+    0, 0, 0, 1,
+  };
+}
+
+v3 Rotate(v3 vec, v3 rotation)
+{
+  v4 result = GetRotateZMatrix(rotation.z) * GetRotateYMatrix(rotation.y) * GetRotateXMatrix(rotation.x) * V4(vec, 1.0f);
+  return result.xyz;
+}
+
+mat4 GetProjectionMatrix(v2 size, float rFov, float zFar, float zNear)
+{
+  float a = size.x / size.y;
+  float s = 1 / Tan(0.5f * rFov);
+  float deltaZ = zFar - zNear;
+
+  mat4 result = {};
+  result.r0 = V4(s, 0, 0, 0);
+  result.r1 = V4(0, s * a, 0, 0);
+  result.r2 = V4(0, 0, zFar / deltaZ, -(zFar * zNear) / deltaZ);
+  result.r3 = V4(0, 0, 1, 0);
+
+  return result;
+}
+
+mat4 GetTranslateMatrix(v3 pos)
+{
+  mat4 result = {};
+  result.r0 = V4(1, 0, 0, -pos.x);
+  result.r1 = V4(0, 1, 0, -pos.y);
+  result.r2 = V4(0, 0, 1, -pos.z);
+  result.r3 = V4(0, 0, 0, 1);
+
+  return result;
+}
+
+mat4 GetScaleMatrix(v3 scale)
+{
+  mat4 result = {};
+  result.r0 = V4(scale.x, 0, 0, 0);
+  result.r1 = V4(0, scale.y, 0, 0);
+  result.r2 = V4(0, 0, scale.z, 0);
+  result.r3 = V4(0, 0, 0, 1);
+
+  return result;
+}
+
+mat4 GetLookAtMatrix(v3 eye, v3 target, v3 up = V3(0, 1, 0))
+{
+  v3 camZ = Normalize(target - eye);
+  v3 camX = Normalize(Cross(up, camZ));
+  v3 camY = Normalize(Cross(camZ, camX));
+
+  mat4 result = {};
+  result.r0 = V4(camX.x, camX.y, camX.z, -Dot(camX, eye));
+  result.r1 = V4(camY.x, camY.y, camY.z, -Dot(camY, eye));
+  result.r2 = V4(camZ.x, camZ.y, camZ.z, -Dot(camZ, eye));
+  result.r3 = V4(0, 0, 0, 1);
+
+  return result;
 }
 #endif
