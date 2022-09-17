@@ -72,9 +72,10 @@ mat4 OpenGLGetLookAtMatrix(v3 eye, v3 target, v3 up = V3(0, 1, 0))
     return result;
 }
 
-static void OpenGLRenderToOutput(render_commands* renderCommands, win32_offscreen_buffer* buffer)
+static void OpenGLRenderGroupToOutput(render_group* renderGroup, loaded_bitmap* drawBuffer)
 {
-    glViewport(0, 0, buffer->width, buffer->height);
+    glViewport(0, 0, drawBuffer->width, drawBuffer->height);
+    camera* cam = renderGroup->cam;
 
     glEnable(GL_TEXTURE_2D);
     glMatrixMode(GL_TEXTURE);
@@ -84,28 +85,72 @@ static void OpenGLRenderToOutput(render_commands* renderCommands, win32_offscree
     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
     float noProj[] =
     {
-        2.0f / buffer->width, 0, 0, 0,
-        0, 2.0f / buffer->height, 0, 0,
+        2.0f / drawBuffer->width, 0, 0, 0,
+        0, 2.0f / drawBuffer->height, 0, 0,
         0, 0, 1, 0,
         -1, -1, 0, 1,
     };
+    mat4 proj = OpenGLGetProjectionMatrix(cam);
+    mat4 trans = OpenGLGetTranslateMatrix(cam->pos);
+    mat4 view = OpenGLGetLookAtMatrix(cam->pos, cam->pos + cam->dir, V3(0, 1, 0));
+    mat4 modelView = trans * view;
+
+    bool isProj = true;
 
     glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
+    glLoadMatrixf((float*)modelView.e);
 
     glMatrixMode(GL_PROJECTION);
-    glLoadMatrixf(noProj);
+    glLoadMatrixf((float*)proj.e);
 
-    for (int index = 0; index < renderCommands->pushBuffer.used;)
+    for (int index = 0; index < renderGroup->pushBuffer.used;)
     {
-        render_entry_header* header = (render_entry_header*)((u8*)renderCommands->pushBuffer.base + index);
+        render_entry_header* header = (render_entry_header*)((u8*)renderGroup->pushBuffer.base + index);
         index += sizeof(*header);
+
+        switch (header->type)
+        {
+            case RENDER_TYPE_render_entry_rectangle:
+            case RENDER_TYPE_render_entry_rectangle_outline:
+            case RENDER_TYPE_render_entry_bitmap:
+            {
+                if (isProj == true)
+                {
+                    glMatrixMode(GL_MODELVIEW);
+                    glLoadIdentity();
+
+                    glMatrixMode(GL_PROJECTION);
+                    glLoadMatrixf(noProj);
+                    isProj = false;
+                }
+            } break;
+
+            case RENDER_TYPE_render_entry_model:
+            {
+                if (!isProj)
+                {
+                    glMatrixMode(GL_MODELVIEW);
+                    glLoadMatrixf((float*)modelView.e);
+
+                    glMatrixMode(GL_PROJECTION);
+                    glLoadMatrixf((float*)proj.e);
+                    isProj = true;
+                }
+            } break;
+            case RENDER_TYPE_render_entry_saturation:
+            case RENDER_TYPE_render_entry_clear:
+            {
+                //NOTE: skip!
+            }
+            break;
+            INVALID_DEFAULT_CASE;
+        }
 
         switch (header->type)
         {
             case RENDER_TYPE_render_entry_saturation:
             {
-                render_entry_saturation* entry = (render_entry_saturation*)((u8*)renderCommands->pushBuffer.base + index);
+                render_entry_saturation* entry = (render_entry_saturation*)((u8*)renderGroup->pushBuffer.base + index);
                 index += sizeof(*entry);
 
                 // ChangeSaturation(drawBuffer, entry->level);
@@ -113,7 +158,7 @@ static void OpenGLRenderToOutput(render_commands* renderCommands, win32_offscree
 
             case RENDER_TYPE_render_entry_rectangle:
             {
-                render_entry_rectangle* entry = (render_entry_rectangle*)((u8*)renderCommands->pushBuffer.base + index);
+                render_entry_rectangle* entry = (render_entry_rectangle*)((u8*)renderGroup->pushBuffer.base + index);
                 index += sizeof(*entry);
                 glDisable(GL_TEXTURE_2D);
 
@@ -123,7 +168,7 @@ static void OpenGLRenderToOutput(render_commands* renderCommands, win32_offscree
 
             case RENDER_TYPE_render_entry_rectangle_outline:
             {
-                render_entry_rectangle_outline* entry = (render_entry_rectangle_outline*)((u8*)renderCommands->pushBuffer.base + index);
+                render_entry_rectangle_outline* entry = (render_entry_rectangle_outline*)((u8*)renderGroup->pushBuffer.base + index);
                 index += sizeof(*entry);
 
                 // DrawRectangleOutline(drawBuffer, entry->minP, entry->maxP, entry->thickness, entry->color);
@@ -131,7 +176,7 @@ static void OpenGLRenderToOutput(render_commands* renderCommands, win32_offscree
 
             case RENDER_TYPE_render_entry_bitmap:
             {
-                render_entry_bitmap* entry = (render_entry_bitmap*)((u8*)renderCommands->pushBuffer.base + index);
+                render_entry_bitmap* entry = (render_entry_bitmap*)((u8*)renderGroup->pushBuffer.base + index);
                 index += sizeof(*entry);
 
 
@@ -152,7 +197,7 @@ static void OpenGLRenderToOutput(render_commands* renderCommands, win32_offscree
 
             case RENDER_TYPE_render_entry_clear:
             {
-                render_entry_clear* entry = (render_entry_clear*)((u8*)renderCommands->pushBuffer.base + index);
+                render_entry_clear* entry = (render_entry_clear*)((u8*)renderGroup->pushBuffer.base + index);
                 index += sizeof(*entry);
                 glClearColor(entry->color.r, entry->color.g, entry->color.b, entry->color.a);
                 glClear(GL_COLOR_BUFFER_BIT);
@@ -160,28 +205,10 @@ static void OpenGLRenderToOutput(render_commands* renderCommands, win32_offscree
 
             case RENDER_TYPE_render_entry_model:
             {
-                render_entry_model* entry = (render_entry_model*)((u8*)renderCommands->pushBuffer.base + index);
+                render_entry_model* entry = (render_entry_model*)((u8*)renderGroup->pushBuffer.base + index);
                 index += sizeof(*entry);
 
-                mat4 proj = OpenGLGetProjectionMatrix(entry->cam);
-                mat4 trans = OpenGLGetTranslateMatrix(entry->cam->pos);
-                mat4 view = OpenGLGetLookAtMatrix(entry->cam->pos, entry->cam->pos + entry->cam->dir, V3(0, 1, 0));
-                mat4 modelView = trans * view;
-
-
-                glMatrixMode(GL_MODELVIEW);
-                glLoadMatrixf((float*)modelView.e);
-
-                glMatrixMode(GL_PROJECTION);
-                glLoadMatrixf((float*)proj.e);
-
-                // Draw(queue, arena, drawBuffer, entry->light, renderCommands->cam, entry->model, entry->col);
-
-                glMatrixMode(GL_MODELVIEW);
-                glLoadIdentity();
-
-                glMatrixMode(GL_PROJECTION);
-                glLoadMatrixf(noProj);
+                // Draw(queue, arena, drawBuffer, entry->light, renderGroup->cam, entry->model, entry->col);
             } break;
 
             INVALID_DEFAULT_CASE;

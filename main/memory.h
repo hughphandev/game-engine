@@ -35,13 +35,11 @@ static void FreeSize_(memory_arena* arena, void* location, size_t sizeInByte)
   arena->used -= sizeInByte;
 }
 
-static memory_arena InitMemoryArena(void* base, size_t size)
+static void InitMemoryArena(memory_arena* arena, size_t size, void* base)
 {
-  memory_arena arena;
-  arena.base = (u8*)base;
-  arena.size = size;
-  arena.used = 0;
-  return arena;
+  arena->base = (u8*)base;
+  arena->size = size;
+  arena->used = 0;
 }
 
 
