@@ -8,12 +8,6 @@
 #include "thread.h"
 #include "assets.h"
 
-struct game_offscreen_buffer
-{
-  int width;
-  int height;
-  void* memory;
-};
 
 struct environment_map
 {
@@ -67,7 +61,6 @@ union flat_quad
   };
 };
 
-
 struct directional_light
 {
   v3 dir;
@@ -90,6 +83,22 @@ struct light_config
   u32 directionalLightsCount;
   point_light* pointLights;
   u32 pointLightsCount;
+};
+
+struct camera
+{
+  v3 offSet;
+  v3 pos;
+  v2 rot;
+
+  float* zBuffer;
+
+  float meterToPixel;
+
+  float zNear, zFar;
+  float rFov;
+  v2 size;
+  v3 dir;
 };
 
 enum render_entry_type
@@ -121,9 +130,9 @@ struct render_entry_model
 {
   loaded_model* model;
   light_config light;
-
   v4 col;
   loaded_bitmap* bitmap;
+  camera* cam;
 };
 
 struct render_entry_rectangle
@@ -149,27 +158,22 @@ struct render_entry_bitmap
   v4 color;
 };
 
-struct camera
+
+struct render_commands
 {
-  v3 offSet;
-  v3 pos;
-  v2 rot;
-
-  float* zBuffer;
-
-  float meterToPixel;
-
-  float zNear, zFar;
-  float rFov;
-  v2 size;
-  v3 dir;
-};
-
-struct render_group
-{
-  camera* cam;
+  bool isHardware;
   memory_arena pushBuffer;
+  u32 width, height;
 };
 
+render_commands InitRenderCommands(memory_arena* arena, u32 size, u32 width, u32 height)
+{
+  render_commands result;
+  void* base = PUSH_SIZE(arena, size);
+  result.pushBuffer = InitMemoryArena(base, size);
+  result.width = width;
+  result.height = height;
+  return result;
+}
 
 #endif

@@ -14,7 +14,7 @@
 #include "utils.h"
 #include "thread.h"
 #include "opengl_render.cpp"
-// #include "software_render.cpp"
+#include "software_render.cpp"
 
 // TODO: Global for now
 static bool g_running;
@@ -203,21 +203,24 @@ static void Win32ResizeDIBSection(win32_offscreen_buffer* buffer, int width, int
 
 }
 
-static void Win32BufferToWindow(HDC deviceContext, win32_offscreen_buffer* buffer, int windowWidth, int windowHeight, bool isHardware)
+static void Win32BufferToWindow(HDC deviceContext, win32_offscreen_buffer* buffer, platform_work_queue* queue, memory_arena* arena, render_commands* commands)
 {
   ASSERT(buffer->width > 0 && buffer->height > 0);
-  if (!isHardware)
+  if (!commands->isHardware)
   {
     //Note: not stretching for debug purpose!
     //TODO: switch to aspect ratio in the future!
 
-    buffer->offSet.x = 0.5f * (float)(windowWidth - buffer->width);
-    buffer->offSet.y = 0.5f * (float)(windowHeight - buffer->height);
+    buffer->offSet.x = 0.5f * (float)(commands->width - buffer->width);
+    buffer->offSet.y = 0.5f * (float)(commands->width - buffer->height);
+
+    TileRenderToOutput(queue, arena, commands, buffer);
 
     StretchDIBits(deviceContext, (int)buffer->offSet.x, (int)buffer->offSet.y, buffer->width, buffer->height, 0, 0, buffer->width, buffer->height, buffer->memory, &buffer->info, DIB_RGB_COLORS, SRCCOPY);
   }
   else
   {
+    OpenGLRenderToOutput(commands, buffer);
     SwapBuffers(deviceContext);
   }
 }
@@ -1024,8 +1027,6 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, 
 #endif
       // Static Memory allocation at start up
       game_memory gameMemory = {};
-      gameMemory.permanentStorageSize = MEGABYTES(512);
-      gameMemory.transientStorageSize = MEGABYTES(128);
       gameMemory.platformAPI.FreeFile = DEBUGPlatformFreeMemory;
       gameMemory.platformAPI.ReadFile = DEBUGPlatformReadFile;
       gameMemory.platformAPI.WriteFile = DEBUGPlatformWriteFile;
@@ -1033,9 +1034,10 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, 
 
       gameMemory.platformAPI.AddWorkEntry = (platform_add_work_entry*)Win32AddWorkEntry;
       gameMemory.platformAPI.CompleteAllWork = (platform_complete_all_work*)Win32CompleteAllWork;
-      gameMemory.platformAPI.RenderToOpenGL = (platform_opengl_render*)OpenGLRenderGroupToOutput;
 
-      uint64_t totalSize = gameMemory.permanentStorageSize + gameMemory.transientStorageSize;
+      size_t permanentStorageSize = MEGABYTES(512);
+      size_t transientStorageSize = MEGABYTES(128);
+      uint64_t totalSize = permanentStorageSize + transientStorageSize;
 
       win32_state recordState = {};
 
@@ -1043,12 +1045,21 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, 
       recordState.gameMemory = VirtualAlloc(baseAddress, (size_t)totalSize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
       recordState.tempGameMemory = VirtualAlloc((LPVOID)((u64)baseAddress + totalSize), (size_t)totalSize, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
-      gameMemory.permanentStorage = (uint8_t*)recordState.gameMemory;
-      gameMemory.transientStorage = (uint8_t*)gameMemory.permanentStorage + gameMemory.permanentStorageSize;
+      void* permanentStorage = (uint8_t*)recordState.gameMemory;
+      void* transientStorage = (uint8_t*)permanentStorage + permanentStorageSize;
 
-      if (gameMemory.permanentStorage && gameMemory.transientStorage && samples)
+      if (permanentStorage && transientStorage && samples)
       {
         recordState.memorySize = (DWORD)totalSize;
+        memory_arena persistanceArena = InitMemoryArena(permanentStorage, permanentStorageSize);
+
+        gameMemory.gameState = PUSH_TYPE(&persistanceArena, game_state);
+        gameMemory.tranState = PUSH_TYPE(&persistanceArena, transient_state);
+
+        size_t remainSize = persistanceArena.size - persistanceArena.used;
+
+        gameMemory.tranState = (transient_state*)((u8*)permanentStorage + sizeof(game_state));
+        gameMemory.gameState->arena = InitMemoryArena(PUSH_SIZE(&persistanceArena, remainSize), remainSize);
         ASSERT(recordState.memorySize == totalSize);
 
         float secondsElapsed = 0.0f;
@@ -1154,9 +1165,14 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, 
             buffer.width = g_backBuffer.width;
             buffer.height = g_backBuffer.height;
 
+            *gameMemory.tranState = {};
+            gameMemory.tranState->arena = InitMemoryArena(transientStorage, transientStorageSize);
+
+            render_commands renderCommands = InitRenderCommands(&gameMemory.tranState->arena, MEGABYTES(4), buffer.width, buffer.height);
+
             if (game.UpdateAndRender)
             {
-              game.UpdateAndRender(&gameMemory, &buffer, *input);
+              game.UpdateAndRender(&gameMemory, &renderCommands, *input);
               HandleDebugCycleCounter(&gameMemory);
             }
 
@@ -1297,7 +1313,7 @@ INT __stdcall WinMain(HINSTANCE instance, HINSTANCE prevInstance, PSTR cmdLine, 
             HDC deviceContext = GetDC(window);
 
             //TODO: consider other solution to pass the isHardware parameter.
-            Win32BufferToWindow(deviceContext, &g_backBuffer, wd.width, wd.height, ((game_state*)gameMemory.permanentStorage)->isHardware);
+            Win32BufferToWindow(deviceContext, &g_backBuffer, &queue, &gameMemory.tranState->arena, &renderCommands);
             ReleaseDC(window, deviceContext);
 
 #if INTERNAL

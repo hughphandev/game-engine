@@ -4,11 +4,81 @@
 #include "game.h"
 #include "intrinsics.h"
 #include "math.cpp"
-#include "software_render.cpp"
 #include "random.cpp"
 #include "world.cpp"
 #include "physics.cpp"
 #include "assets.cpp"
+
+loaded_bitmap MakeEmptyBitmap(memory_arena* arena, u32 width, u32 height, bool clearToZero = true)
+{
+  loaded_bitmap result = {};
+  result.pixel = PUSH_ARRAY(arena, u32, width * height);
+  if (result.pixel)
+  {
+    result.width = width;
+    result.height = height;
+    if (clearToZero)
+    {
+      ZeroSize(result.pixel, width * height * BITMAP_PIXEL_SIZE);
+    }
+  }
+  return result;
+}
+
+void MakeSphereDiffuseMap(loaded_bitmap* bitmap, float cX = 1.0f, float cY = 1.0f)
+{
+  float invWidth = 1.0f / (bitmap->width - 1.0f);
+  float invHeight = 1.0f / (bitmap->height - 1.0f);
+
+  for (int y = 0; y < bitmap->height; ++y)
+  {
+    for (int x = 0; x < bitmap->width; ++x)
+    {
+      v2 bitmapUV = V2(x * invWidth, y * invHeight);
+      v2 N = V2(cX, cY) * (2.0f * bitmapUV - 1.0f);
+
+      float alpha = 0.0f;
+      float zSqr = 1.0f - Sqr(N.x) - Sqr(N.y);
+      if (zSqr >= 0.0f)
+      {
+        alpha = 1.0f;
+      }
+
+      v4 col = V4(alpha * V3(0.0f, 0.0f, 0.0f), alpha);
+
+      u32 index = y * bitmap->width + x;
+      bitmap->pixel[index] = col.ToU32();
+    }
+  }
+}
+
+void MakeSphereNormalMap(loaded_bitmap* bitmap, float roughness, float cX = 1.0f, float cY = 1.0f)
+{
+  float invWidth = 1.0f / (bitmap->width - 1.0f);
+  float invHeight = 1.0f / (bitmap->height - 1.0f);
+
+  for (int y = 0; y < bitmap->height; ++y)
+  {
+    for (int x = 0; x < bitmap->width; ++x)
+    {
+      v2 bitmapUV = V2(x * invWidth, y * invHeight);
+      v2 N = V2(cX, cY) * (2.0f * bitmapUV - 1.0f);
+
+      float rsqrt2 = 0.707106781187f;
+      v3 normal = V3(0.0f, rsqrt2, rsqrt2);
+      float zSqr = 1.0f - Sqr(N.x) - Sqr(N.y);
+      if (zSqr >= 0.0f)
+      {
+        normal = V3(N, Sqrt(zSqr));
+      }
+
+      v4 col = V4(0.5f * (normal + 1.0f), roughness);
+
+      u32 index = y * bitmap->width + x;
+      bitmap->pixel[index] = col.ToU32();
+    }
+  }
+}
 
 inline void MoveEntity(entity* it, v2 motion, float timeStep)
 {
@@ -168,15 +238,14 @@ inline bool IsInChunk(entity* it, game_world* world, i32 chunkX, i32 chunkY)
   return ((i32)chunk.x == chunkX && (i32)chunk.y == chunkY);
 }
 
-static void GameEditor(render_group* renderGroup, game_state* gameState, transient_state* tranState, game_input input)
+static void GameEditor(render_commands* renderCommands, game_state* gameState, transient_state* tranState, game_input input)
 {
   game_world* world = &gameState->world;
   camera* cam = &gameState->cam;
-  v2 pos = ScreenPointToWorld(cam, { (float)input.mouseX, (float)input.mouseY });
+  v2 pos = {}; //ScreenPointToWorld(cam, { (float)input.mouseX, (float)input.mouseY });
   v2 tileIndex = GetTileIndex(world, pos);
   rec tileBox = GetTileBound(world, (i32)tileIndex.x, (i32)tileIndex.y);
 
-  // PushRectOutline(renderGroup, V3(tileBox.pos, 0), tileBox.size, 1, { 1.0f, 1.0f, 1.0f, 1.0f });
 
 
   if (input.mouseButtonState[0])
@@ -207,7 +276,7 @@ static void GameEditor(render_group* renderGroup, game_state* gameState, transie
   {
     rec eraser = {};
     eraser.size = { 0.5f, 0.5f };
-    eraser.pos = ScreenPointToWorld(cam, { (float)input.mouseX, (float)input.mouseY });
+    eraser.pos = {};// ScreenPointToWorld(cam, { (float)input.mouseX, (float)input.mouseY });
     for (int i = 0; i < gameState->entityCount; ++i)
     {
       rec current = { gameState->entities[i].pos.xy, gameState->entities[i].size.xy };
@@ -289,16 +358,110 @@ void UpdateEntity(game_state* gameState, transient_state* tranState, entity* it,
   }
 }
 
-static void RenderGroupToOutput(platform_work_queue* queue, memory_arena* arena, render_group* renderGroup, loaded_bitmap* drawBuffer, bool isHardware)
+inline void InitCamera(memory_arena* arena,  camera* cam)
 {
-  if(isHardware)
+  i32 pixelGuard = 4;
+  i32 camSizeIndex = (i32)(cam->size.x * cam->size.y + pixelGuard);
+  cam->zBuffer = PUSH_ARRAY(arena, float, camSizeIndex);
+  for (int i = 0; i < cam->size.x * cam->size.y; ++i)
   {
-    platformAPI.RenderToOpenGL(renderGroup, drawBuffer);
+    cam->zBuffer[i] = INFINITY;
+  }
+}
+
+void* PushRenderElement_(render_commands* renderCommands, size_t size, render_entry_type type)
+{
+  render_entry_header* result = (render_entry_header*)PushSize_(&renderCommands->pushBuffer, size + sizeof(render_entry_header));
+
+  if (result)
+  {
+    result->type = type;
   }
   else
   {
-    TileRenderGroupToOutput(queue, arena, renderGroup, drawBuffer);
+    INVALID_CODE_PATH;
   }
+  return result + 1;
+}
+
+#define PUSH_RENDER_ELEMENT(renderCommands, type) (type*)PushRenderElement_(renderCommands, sizeof(type), RENDER_TYPE_##type) 
+
+inline render_entry_clear* PushClear(render_commands* renderCommands, v4 color)
+{
+  render_entry_clear* entry = PUSH_RENDER_ELEMENT(renderCommands, render_entry_clear);
+  if (entry)
+  {
+    entry->color = color;
+  }
+
+  return entry;
+}
+
+inline render_entry_saturation* Saturation(render_commands* renderCommands, float level)
+{
+  render_entry_saturation* entry = PUSH_RENDER_ELEMENT(renderCommands, render_entry_saturation);
+  if (entry)
+  {
+    entry->level = level;
+  }
+
+  return entry;
+}
+
+inline render_entry_bitmap* PushBitmap(render_commands* renderCommands, loaded_bitmap* bitmap, v2 minP, v2 maxP, v4 col = { 1.0f, 1.0f, 1.0f, 1.0f })
+{
+  render_entry_bitmap* entry = PUSH_RENDER_ELEMENT(renderCommands, render_entry_bitmap);
+  if (entry)
+  {
+    entry->bitmap = bitmap;
+    entry->minP = minP;
+    entry->maxP = maxP;
+    entry->color = col;
+  }
+
+  return entry;
+}
+
+inline render_entry_rectangle* PushRect(render_commands* renderCommands, v2 minP, v2 maxP, v4 col)
+{
+  render_entry_rectangle* entry = PUSH_RENDER_ELEMENT(renderCommands, render_entry_rectangle);
+  if (entry)
+  {
+    entry->minP = minP;
+    entry->maxP = maxP;
+    entry->color = col;
+  }
+
+  return entry;
+}
+
+inline render_entry_rectangle_outline* PushRectOutline(render_commands* renderCommands, v2 minP, v2 maxP, u32 thickness, v4 col)
+{
+  render_entry_rectangle_outline* entry = PUSH_RENDER_ELEMENT(renderCommands, render_entry_rectangle_outline);
+  if (entry)
+  {
+    entry->minP = minP;
+    entry->maxP = maxP;
+    entry->color = col;
+    entry->thickness = thickness;
+  }
+
+  return entry;
+}
+
+inline render_entry_model* PushRenderModel(render_commands* renderCommands, light_config light, loaded_model* model, v4 col, loaded_bitmap* bitmap)
+{
+  render_entry_model* entry = PUSH_RENDER_ELEMENT(renderCommands, render_entry_model);
+  if (entry)
+  {
+    entry->model = model;
+    entry->light = light;
+
+    entry->col = col;
+    entry->bitmap = bitmap;
+  }
+
+  return entry;
 }
 
 #if INTERNAL
@@ -312,11 +475,9 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 #endif
   BEGIN_TIMER_BLOCK(GameUpdateAndRender);
 
-  game_state* gameState = (game_state*)memory->permanentStorage;
-  if (!memory->isInit)
+  game_state* gameState = memory->gameState;
+  if (!gameState->isInited)
   {
-    InitMemoryArena(&gameState->arena, memory->permanentStorageSize - sizeof(game_state), (u8*)memory->permanentStorage + sizeof(game_state));
-
     platformAPI = memory->platformAPI;
 
     gameState->programMode = MODE_NORMAL;
@@ -325,17 +486,17 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     AddSound(gameState, memory, "test.wav");
 
     game_world* world = &gameState->world;
-    gameState->cam.meterToPixel = buffer->height / 20.0f;
-    gameState->cam.offSet = { buffer->width / 2.0f, buffer->height / 2.0f };
+    gameState->cam.meterToPixel = renderCommands->height / 20.0f;
+    gameState->cam.offSet = { renderCommands->width / 2.0f, renderCommands->height / 2.0f };
 
+    renderCommands->isHardware = true;
 
-    gameState->cam.size = V2(buffer->width, buffer->height);
+    gameState->cam.size = V2((float)renderCommands->width, (float)renderCommands->height);
     gameState->cam.rFov = 0.5f * PI;
     gameState->cam.zNear = 0.5;
     gameState->cam.zFar = 100;
     gameState->cam.pos = V3(0, 0, -5);
     gameState->cam.rot = {};
-    gameState->isHardware = true;
 
     world->tileCountX = 1024;
     world->tileCountY = 1024;
@@ -365,93 +526,83 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     MakeSphereNormalMap(&gameState->bricksNormal, 0.0f);
 
     gameState->testDiffuse = MakeEmptyBitmap(&gameState->arena, 128, 128);
-    ClearBuffer(&gameState->testDiffuse, V4(0.5f, 0.5f, 0.5f, 1.0f).ToU32());
+    // ClearBuffer(&gameState->testDiffuse, V4(0.5f, 0.5f, 0.5f, 1.0f).ToU32());
     gameState->testNormal = MakeEmptyBitmap(&gameState->arena, gameState->testDiffuse.width, gameState->testDiffuse.height, false);
     MakeSphereNormalMap(&gameState->testNormal, 0.0f);
     MakeSphereDiffuseMap(&gameState->testDiffuse);
 
-    memory->isInit = true;
+    gameState->isInited = true;
   }
+  transient_state* tranState = memory->tranState;
 
+  InitCamera(&tranState->arena, &gameState->cam);
 
-  //NOTE: init transient state
-  transient_state tranState = {};
-  InitMemoryArena(&tranState.tranArena, memory->transientStorageSize, memory->transientStorage);
-  if (!tranState.isInit)
+  if (!tranState->isInited)
   {
-    tranState.activeEntity = PUSH_ARRAY(&tranState.tranArena, entity*, MAX_ACTIVE_ENTITY);
-    tranState.activeEntityCount = 0;
+    tranState->activeEntity = PUSH_ARRAY(&tranState->arena, entity*, MAX_ACTIVE_ENTITY);
+    tranState->activeEntityCount = 0;
 
-    tranState.envMapWidth = 512;
-    tranState.envMapHeight = 256;
-    for (int mapIndex = 0; mapIndex < ARRAY_COUNT(tranState.envMap); ++mapIndex)
+    tranState->envMapWidth = 512;
+    tranState->envMapHeight = 256;
+    for (int mapIndex = 0; mapIndex < ARRAY_COUNT(tranState->envMap); ++mapIndex)
     {
-      environment_map* map = &tranState.envMap[mapIndex];
-      u32 width = tranState.envMapWidth;
-      u32 height = tranState.envMapHeight;
+      environment_map* map = &tranState->envMap[mapIndex];
+      u32 width = tranState->envMapWidth;
+      u32 height = tranState->envMapHeight;
       for (int LODIndex = 0; LODIndex < ARRAY_COUNT(map->LOD); ++LODIndex)
       {
-        map->LOD[LODIndex] = MakeEmptyBitmap(&tranState.tranArena, width, height);
+        map->LOD[LODIndex] = MakeEmptyBitmap(&tranState->arena, width, height);
         width >>= 1;
         height >>= 1;
       }
     }
 
-    tranState.envMap[0].pZ = -4.0f;
-    tranState.envMap[1].pZ = 0.0f;
-    tranState.envMap[2].pZ = 4.0f;
+    tranState->envMap[0].pZ = -4.0f;
+    tranState->envMap[1].pZ = 0.0f;
+    tranState->envMap[2].pZ = 4.0f;
 
-    tranState.isInit = true;
+    tranState->isInited = true;
   }
-  loaded_bitmap drawBuffer = {};
-  drawBuffer.pixel = (u32*)buffer->memory;
-  drawBuffer.width = buffer->width;
-  drawBuffer.height = buffer->height;
-
   game_world* world = &gameState->world;
-  render_group* renderGroup = InitRenderGroup(&tranState.tranArena, MEGABYTES(4), &gameState->cam);
-  PushClear(renderGroup, V4(0.25f, 0.25f, 0.25f, 0.0f));
+  //TODO: init render group;
+  PushClear(renderCommands, V4(0.25f, 0.25f, 0.25f, 0.0f));
 
   // LoadEntity(&tranState, gameState->player);
 
-  for (int i = 0; i < tranState.activeEntityCount; ++i)
+  for (int i = 0; i < tranState->activeEntityCount; ++i)
   {
-    switch (tranState.activeEntity[i]->type)
+    switch (tranState->activeEntity[i]->type)
     {
       case ENTITY_PLAYER:
       {
-        // PushBitmap(renderGroup, &gameState->knight, tranState.activeEntity[i]->pos, tranState.activeEntity[i]->size.xy);
       } break;
 
       case ENTITY_WALL:
       {
-        // PushBitmap(renderGroup, &gameState->wall, tranState.activeEntity[i]->pos, tranState.activeEntity[i]->size.xy);
       } break;
 
       case ENTITY_PROJECTILE:
       case ENTITY_SWORD:
       {
-        entity* it = tranState.activeEntity[i];
-        // PushRect(renderGroup, it->pos, it->size.xy, { 1.0f, 1.0f, 1.0f, 1.0f });
+        entity* it = tranState->activeEntity[i];
       } break;
     }
   }
 
   v2 checkerSize = V2(16, 16);
   v3 mapCol[] = { V3(1, 0, 0), V3(0, 1, 0), V3(0, 0, 1) };
-  for (i32 mapIndex = 0; mapIndex < ARRAY_COUNT(tranState.envMap); ++mapIndex)
+  for (i32 mapIndex = 0; mapIndex < ARRAY_COUNT(tranState->envMap); ++mapIndex)
   {
     bool rowCheckerOn = false;
-    environment_map* map = &tranState.envMap[mapIndex];
-    for (u32 y = 0; y < tranState.envMapHeight; y += (u32)checkerSize.y)
+    environment_map* map = &tranState->envMap[mapIndex];
+    for (u32 y = 0; y < tranState->envMapHeight; y += (u32)checkerSize.y)
     {
       bool checkerOn = rowCheckerOn;
-      for (u32 x = 0; x < tranState.envMapWidth; x += (u32)checkerSize.x)
+      for (u32 x = 0; x < tranState->envMapWidth; x += (u32)checkerSize.x)
       {
         v3 color = checkerOn ? mapCol[mapIndex] : V3(0, 0, 0);
         v2 minP = V2((float)x, (float)y);
         v2 maxP = minP + checkerSize;
-        DrawRectangle(&map->LOD[0], minP, maxP, V4(color, 1.0f));
 
         checkerOn = !checkerOn;
       }
@@ -478,16 +629,16 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     dir.y -= 1;
   }
 
-  gameState->cam.rot += V2(input.dMouseX, input.dMouseY);
+  gameState->cam.rot += V2((float)input.dMouseX, (float)input.dMouseY);
   float pitch = gameState->cam.rot.y * input.dt * 0.01f;
   float yaw = (PI * 0.5f) + gameState->cam.rot.x * input.dt * 0.01f;
 
-  renderGroup->cam->dir.x = -Cos(yaw) * Cos(pitch);
-  renderGroup->cam->dir.y = Sin(pitch);
-  renderGroup->cam->dir.z = Sin(yaw) * Cos(pitch);
-  renderGroup->cam->dir = Normalize(renderGroup->cam->dir);
+  gameState->cam.dir.x = -Cos(yaw) * Cos(pitch);
+  gameState->cam.dir.y = Sin(pitch);
+  gameState->cam.dir.z = Sin(yaw) * Cos(pitch);
+  gameState->cam.dir = Normalize(gameState->cam.dir);
 
-  renderGroup->cam->pos += Normalize(dir.y * renderGroup->cam->dir + dir.x * Cross(V3(0, 1, 0), renderGroup->cam->dir)) * input.dt;
+  gameState->cam.pos += Normalize(dir.y * gameState->cam.dir + dir.x * Cross(V3(0, 1, 0), gameState->cam.dir)) * input.dt;
 
 
   vertex ver[] = {
@@ -533,7 +684,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
   light.pointLightsCount = 1;
   light.directionalLights = &sunLight;
   light.directionalLightsCount = 1;
-  loaded_model cube = DEBUGLoadObj(&tranState.tranArena, memory->platformAPI, "cube.obj");
+  loaded_model cube = DEBUGLoadObj(&tranState->arena, memory->platformAPI, "cube.obj");
 
   for (u32 i = 0; i < cube.posCount; ++i)
   {
@@ -545,13 +696,9 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     cube.normals[i] = Rotate(cube.normals[i], V3(gameState->time, -gameState->time, 0.0f));
   }
 
-  // PushRenderModel(renderGroup, light, &cube, col, &gameState->bricks);
-  // PushRect(renderGroup, V2(0, 0), V2(100, 100), V4(1.0f, 1.0f, 1.0f, 1.0f));
-  PushBitmap(renderGroup, &gameState->bricks, V2(0, 0), V2(gameState->bricks.width, gameState->bricks.height)); 
+  PushBitmap(renderCommands, &gameState->bricks, V2(0, 0), V2(gameState->bricks.width, gameState->bricks.height));
 
   gameState->time += input.dt;
-
-  RenderGroupToOutput(memory->workQueue, &tranState.tranArena, renderGroup, &drawBuffer, gameState->isHardware);
 
   if (input.f3.isDown && input.f3.halfTransitionCount == 1)
   {
@@ -595,7 +742,7 @@ void MixSound(game_sound_output* soundBuffer, loaded_sound* sounds, size_t sound
 
 extern "C" GAME_OUTPUT_SOUND(GameOutputSound)
 {
-  game_state* gameState = (game_state*)memory->permanentStorage;
+  game_state* gameState = memory->gameState;
 
   // PlaySound(soundBuffer, &gameState->sounds[0]);
 }
