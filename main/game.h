@@ -8,13 +8,12 @@
 #include "math.h"
 #include "thread.h"
 #include "assets.h"
-#include "render.h"
 
 #if INTERNAL
 enum
 {
   DebugCycleCounter_GameUpdateAndRender,
-  DebugCycleCounter_TileRenderToOutput,
+  DebugCycleCounter_TileRenderGroupToOutput,
   DebugCycleCounter_DrawTriangle,
   DebugCycleCounter_PixelFill,
   DebugCycleCounter_Count,
@@ -47,13 +46,6 @@ struct game_sound_output
   size_t sampleCount;
   size_t bytesPerSample;
   i16* samples;
-};
-
-struct game_offscreen_buffer
-{
-  int width;
-  int height;
-  void* memory;
 };
 
 struct button_state
@@ -128,8 +120,6 @@ enum program_mode
 
 struct game_state
 {
-  bool isInited;
-
   memory_arena arena;
   camera cam;
   game_world world;
@@ -159,6 +149,7 @@ struct game_state
   loaded_model cube;
 
   float time;
+  bool isHardware;
 };
 
 struct transient_state
@@ -166,14 +157,14 @@ struct transient_state
 #define MAX_ACTIVE_ENTITY 4096
   entity** activeEntity;
   size_t activeEntityCount;
-  memory_arena arena;
+  memory_arena tranArena;
 
   u32 envMapWidth;
   u32 envMapHeight;
   //NOTE: 0 is bottom, 1 is middle, 2 is top
   environment_map envMap[3];
 
-  bool isInited;
+  bool isInit;
 };
 
 #if INTERNAL
@@ -196,6 +187,9 @@ DEBUG_PLATFORM_READ_FILE(DEBUGPlatformReadFile);
 DEBUG_PLATFORM_FREE_MEMORY(DEBUGPlatformFreeMemory);
 DEBUG_PLATFORM_WRITE_FILE(DEBUGPlatformWriteFile);
 
+#define PLATFORM_OPENGL_RENDER(name) void name(render_group* renderGroup, loaded_bitmap* drawBuffer)
+typedef PLATFORM_OPENGL_RENDER(platform_opengl_render);
+
 struct platform_api
 {
   debug_platform_read_file* ReadFile;
@@ -203,6 +197,7 @@ struct platform_api
   debug_platform_free_memory* FreeFile;
   platform_add_work_entry* AddWorkEntry;
   platform_complete_all_work* CompleteAllWork;
+  platform_opengl_render* RenderToOpenGL;
 };
 
 #endif
@@ -210,8 +205,13 @@ struct platform_api
 
 struct game_memory
 {
-  game_state* gameState;
-  transient_state* tranState;
+  bool isInit;
+
+  u64 permanentStorageSize;
+  void* permanentStorage; // TODO: REQUIRE clear to zero on startup
+
+  u64 transientStorageSize;
+  void* transientStorage; // TODO: REQUIRE clear to zero on startup
 
   platform_api platformAPI;
   platform_work_queue* workQueue;
@@ -227,7 +227,7 @@ struct level
   entity* entities;
 };
 
-#define GAME_UPDATE_AND_RENDER(name) void name(game_memory* memory, render_commands* renderCommands, game_input input)
+#define GAME_UPDATE_AND_RENDER(name) void name(game_memory* memory, game_offscreen_buffer* buffer, game_input input)
 typedef GAME_UPDATE_AND_RENDER(game_update_and_render);
 
 #define GAME_OUTPUT_SOUND(name) void name(game_memory* memory, game_sound_output* soundBuffer)
