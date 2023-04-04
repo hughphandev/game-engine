@@ -12,7 +12,7 @@ An experimental game engine for educational purposes!
 - Code hotloading: Recompile parts of code while the game is running
 - Game-Loop Record and Playback: Record initial state of the game and playback when neccessary
 - Multi-Threading: Basic work queue
-- Lighting: Basic directional lighting
+- Lighting: directional lighting, Point Light (Phong shaing)
 
 ## Features TODO
 - Hardware Acceleration
